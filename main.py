@@ -1,5 +1,3 @@
-from pprint import pprint
-
 from dotenv import load_dotenv
 import logging
 import os
@@ -15,23 +13,50 @@ import app_logger
 load_dotenv()
 logger: logging.Logger = app_logger.get_logger(__name__)
 
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-ALL_DATA = [TELEGRAM_BOT_TOKEN]
+TELEGRAM_BOT_TOKEN: str = os.getenv('TELEGRAM_BOT_TOKEN')
+ALL_DATA: list[str] = [TELEGRAM_BOT_TOKEN]
 
-API_TELEGRAM_UPDATE_SEC = 0.5
+API_TELEGRAM_UPDATE_SEC: int = 0.5
 
-# А карты можно отправлять так: for i in range(0, round) and range(round, len(players))
+# Проверить, что все кнопки реально нужны
+# Возможно добавить кнопку, чтобы завершить игру досрочно
+BUTTON_ADD_CORRECT: str = '/add_correct'
+BUTTON_ADD_INCORRECT: str = '/add_incorrect'
+BUTTON_ADD_PENALTY: str = '/add_penalty'
+BUTTON_BEGIN: str = '/begin'
+BUTTON_BREAK: str = '/break'
+BUTTON_CREATE: str = '/create'
+BUTTON_CORRECT_ANSWER: str = '/✅'
+BUTTON_EXIT: str = '/exit'
+BUTTON_HELP: str = '/help'
+BUTTON_INCORRECT_ANSWER: str = '/❌'
+BUTTON_JOIN: str = '/join'
+BUTTON_NEXT_ROUND: str = '/next_round'
+BUTTON_RULES: str = '/rules'
+BUTTON_START: str = '/start'
+
+# А карты можно отправлять так:
+# for i in range(0, round) and range(round, len(players))
 IMAGE_CARDS: Path = Path('res/words')
 IMAGE_CARDS_СOUNT: int = len(list(IMAGE_CARDS.iterdir()))
-IMAGE_RULES = [Path(f'res/rules/0{i}_правила.jpg') for i in range(8)]
-IMAGE_RULES_MEDIA = []
+IMAGE_RULES: list[Path] = [
+    Path(f'res/rules/0{i}_правила.jpg') for i in range(8)]
+IMAGE_RULES_MEDIA: list[InputMediaPhoto] = []
 for file_path in IMAGE_RULES:
     with open(file_path, 'rb') as file:
         IMAGE_RULES_MEDIA.append(InputMediaPhoto(
             media=file.read(), caption=Path(file_path).name))
 
-KEYBOARD_MAIN_MENU: list[list[str]] = [['/create', '/join', '/rules', '/help']]
-KEYBOARD_IN_GAME: list[list[str]] = [['/✅', '/❌']]
+KEYBOARD_IN_GAME: list[list[str]] = [
+    [BUTTON_CORRECT_ANSWER, BUTTON_INCORRECT_ANSWER]]
+KEYBOARD_IN_GAME_PAUSE: list[list[str]] = [
+    [BUTTON_EXIT]]
+KEYBOARD_IN_LOBBY: list[list[str]] = [
+    [BUTTON_EXIT, BUTTON_RULES, BUTTON_HELP]]
+KEYBOARD_IN_LOBBY_CAPITAN: list[list[str]] = [
+    [BUTTON_BEGIN, BUTTON_EXIT, BUTTON_RULES, BUTTON_HELP]]
+KEYBOARD_MAIN_MENU: list[list[str]] = [
+    [BUTTON_CREATE, BUTTON_JOIN, BUTTON_RULES, BUTTON_HELP]]
 
 CHARACTERS_CONFIG: dict[int, dict] = {
     4: {
@@ -66,10 +91,10 @@ CHARACTERS_CONFIG: dict[int, dict] = {
 MESSAGE_CANT_CREATE_OR_JOIN: str = (
     'Сновидец, я вижу, что ты уже участвуешь в одной из игр. Чтобы создать '
     'новую или подключиться к другой, тебе сначала нужно выйти из текущей! '
-    'Для этого воспользуйся командой /exit.')
+    f'Для этого воспользуйся командой {BUTTON_EXIT}.')
 MESSAGE_CREATE_GAME: str = (
     'Приветствую, капитан! Ты готов отправиться со своей командой в новое '
-    'путешествие по миру снов? Отлично! Пожалуйста, пришли мне пять цифр ,'
+    'путешествие по миру снов? Отлично! Пожалуйста, пришли мне пять цифр, '
     'которые будут являться паролем к игре!')
 MESSAGE_CREATE_GAME_FAILED: str = (
     'Какая удача, капитан! Ты угадал чей-то пароль! А ведь шанс такого '
@@ -77,9 +102,14 @@ MESSAGE_CREATE_GAME_FAILED: str = (
     'комбинацию цифр, попробуем еще раз!')
 MESSAGE_CREATE_GAME_PASS: str = (
     'Пароль принят, капитан! Теперь в точности сообщи его своим друзьям, '
-    'чтобы они смогли подключиться через команду /join. Когда вся команда '
-    'будет в сборе, используй команду /begin для начала игры. Желаю здорово '
-    'повеселиться!')
+    f'чтобы они смогли подключиться через команду {BUTTON_JOIN}.''\n\n'
+    f'Когда вся команда будет в сборе, используй команду {BUTTON_BEGIN} для '
+    'начала игры. Желаю здорово повеселиться!\n\n'
+    f'А если вдруг ты решишь проснутся - используй команду {BUTTON_EXIT}. '
+    'Игра при этом не остановится!\n\n'
+    f'Чтобы разбудить всех сновидцев используй команду {BUTTON_BREAK}.')
+MESSAGE_LEAVE_GROUP_CHAT: str = (
+    'Я могу работать только в личных переписках и вынужден покинуть этот чат!')
 MESSAGE_GREET_1: str = (
     'Добро пожаловать, о чудесный сновидец!\n\n'
     'Сегодня ты отправляешься в невероятное путешествие по миру снов. Миру, '
@@ -90,11 +120,11 @@ MESSAGE_GREET_1: str = (
     'умение думать на ходу и, конечно же, чувство юмора. Чтобы помочь тебе на '
     'этом пути я высылаю тебе правила игры. Приятных снов!')
 MESSAGE_GREET_2: str = (
-    'Чтобы создать игровую сессию нажми /create\n'
-    'Чтобы присоединиться к игровой сессии нажми /join\n'
-    'Чтобы посмотреть правила настольной игры нажми /rules\n'
-    'Чтобы получить справку по использованию бота нажми /help')
-MESSAGE_INSTRUCTIONS: str = (  # НЕ НАПИСАЛ ДО КОНЦА!!!!!!
+    f'Нажми {BUTTON_CREATE}, чтобы создать новую игру.''\n'
+    f'Нажми {BUTTON_JOIN}, чтобы присоединиться к игре.''\n'
+    f'Нажми {BUTTON_RULES}, чтобы посмотреть правила игры.''\n'
+    f'Нажми {BUTTON_HELP}, чтобы получить справку по использованию бота.')
+MESSAGE_HELP: str = (  # НЕ НАПИСАЛ ДО КОНЦА!!!!!!
     'Как играть через бота:\n\n'
 
     '0. Сбор команды\n\n'
@@ -119,10 +149,9 @@ MESSAGE_INSTRUCTIONS: str = (  # НЕ НАПИСАЛ ДО КОНЦА!!!!!!
     'Пароль должен полностью совпадать с придуманным в пункте 1.\n\n'
 
     '3. Начало игры..... to be continue..'
-    
+
     # добавить пункт, если сервер вылетел!
 )
-
 MESSAGE_JOIN_GAME: str = (
     'Приветствую, сновидец! Ты готов отправиться с друзьями в новое '
     'путешествие по миру снов? Отлично! Пожалуйста, пришли мне пароль от '
@@ -133,7 +162,12 @@ MESSAGE_JOIN_GAME_FAILED: str = (
 MESSAGE_JOIN_GAME_PASS: str = (
     'Пароль принят, сновидец! Когда вся команда будет в сборе, капитан '
     'начнет новую игру, а я тебе сразу же пришлю об этом уведомление! '
-    'Желаю здорово повеселиться!')
+    'Желаю здорово повеселиться! А если вдруг ты решишь проснутся - используй '
+    f'команду {BUTTON_EXIT}.')
+MESSAGE_TEAMMATE: str = (
+    'Проверь список сновидцев ниже: когда вся команда будет в сборе, нажми '
+    f'{BUTTON_BEGIN}, чтобы отправиться в путешествие. Желаю хорошей игры!'
+    '\n\n')
 
 PASSWORD_LEN: int = 5
 
@@ -146,9 +180,16 @@ USER_STATE_IN_GAME: int = 2
 bot: Bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 cards_seq: list[int] = list(range(5))
-shuffle(cards_seq)
 rotate_or_not: bool = choice([True, False])
 
+# Может быть сделать ачивки:
+#   - яркие сны: угадал больше всего слов
+#   - сон на яву: угадал верно все слова
+#   - сущий кошмар: не отгадал ни одного слова
+#   - крестная фея: заработал больше всего очков среди фея
+#   - бу-бу-бука: заработал больше всего очков как бука
+#   - лицемерище: заработал больше всего очков как песочный человек
+#   - кайфоломщик: получил больше всего пенальти
 active_games_test: dict[str, dict] = {
     '/game_password': {
         'user_host': '/host_user_chat_id',
@@ -170,7 +211,7 @@ users_passwords_test: dict[int, int] = {
     '/user_1': '/password_1',
     '/user_2': '/password_5',
     '/user_3': '/password_1'}
-users_passwords_test: dict[int, int] = {}
+users_passwords: dict[int, int] = {}
 
 users_states: dict[int, int] = {}
 
@@ -181,17 +222,9 @@ users_states: dict[int, int] = {}
 
 # А если будет дабл-клик по кнопке?
 
+# Сделать проверку, что игрок не в игре, чтобы ему кнопки не сбить!
+
 """✅✅✅ ГОТОВЫЕ КОМАНДЫ ✅✅✅"""
-
-
-# Тут бы сделать проверку, что игрок не в игре, чтобы ему кнопки не сбить!
-def command_bot_help(update, context) -> None:
-    """Send bot manual to user."""
-    send_message(
-        chat_id=update.effective_chat.id,
-        keyboard=KEYBOARD_MAIN_MENU,
-        message=MESSAGE_INSTRUCTIONS)
-    return
 
 
 def command_create_game(update, context) -> None:
@@ -199,25 +232,20 @@ def command_create_game(update, context) -> None:
     for creating new game session."""
     global users_states
     user_id: int = update.effective_chat.id
-    users_states[user_id: USER_STATE_CREATE]
     if users_states.get(user_id, None) == USER_STATE_IN_GAME:
-        keyboard: list[list[str]] = KEYBOARD_IN_GAME
         message: str = MESSAGE_CANT_CREATE_OR_JOIN
     else:
-        users_states[user_id: USER_STATE_JOIN]
-        keyboard: list[list[str]] = KEYBOARD_MAIN_MENU
+        users_states[user_id] = USER_STATE_CREATE
         message: str = MESSAGE_CREATE_GAME
-    send_message(
-        chat_id=user_id,
-        keyboard=keyboard,
-        message=message)
+    send_message(chat_id=user_id, message=message)
     return
 
 
-# Тут бы сделать проверку, что игрок не в игре, чтобы ему кнопки не сбить!
-def command_game_rules(update, context) -> None:
-    """Send game rules to user."""
-    send_media_group(chat_id=update.effective_chat.id, media=IMAGE_RULES_MEDIA)
+def command_help(update, context) -> None:
+    """Send bot manual to user and pin message."""
+    chat_id: int = update.effective_chat.id
+    message: any = send_message(chat_id=chat_id, message=MESSAGE_HELP)
+    bot.pinChatMessage(chat_id=chat_id, message_id=message.message_id)
     return
 
 
@@ -227,86 +255,138 @@ def command_join_game(update, context) -> None:
     global users_states
     user_id: int = update.effective_chat.id
     if users_states.get(user_id, None) == USER_STATE_IN_GAME:
-        keyboard: list[list[str]] = KEYBOARD_IN_GAME
         message: str = MESSAGE_CANT_CREATE_OR_JOIN
     else:
-        users_states[user_id: USER_STATE_JOIN]
-        keyboard: list[list[str]] = KEYBOARD_MAIN_MENU
+        users_states[user_id] = USER_STATE_JOIN
         message: str = MESSAGE_JOIN_GAME
-    send_message(
-        chat_id=user_id,
-        keyboard=keyboard,
-        message=message)
+    send_message(chat_id=user_id, message=message)
+    return
+
+
+def command_rules(update, context) -> None:
+    """Send game rules to user and pin message."""
+    chat_id: int = update.effective_chat.id
+    message: any = send_media_group(chat_id=chat_id, media=IMAGE_RULES_MEDIA)
+    bot.pinChatMessage(chat_id=chat_id, message_id=message.message_id)
     return
 
 
 def command_start(update, context) -> None:
     """Answer for the first time user runs bot.
     Greet user and sent game rules."""
+    global users_states
     chat_id: int = update.effective_chat.id
     if update.effective_chat.type != 'private':
-        # Надо бы отправить сообщение, чтобы в л.с. к боту переходили
-        # Да и в целом протестировать, что update.effective_chat.type пишет
+        send_message(chat_id=chat_id, message=MESSAGE_LEAVE_GROUP_CHAT)
         bot.leave_chat(chat_id)
+    if chat_id in users_states:
+        return
+    send_message(chat_id=chat_id, message=MESSAGE_GREET_1)
+    command_rules(update, context)
     send_message(
-        chat_id=chat_id,
-        keyboard=KEYBOARD_MAIN_MENU,
-        message=MESSAGE_GREET_1)
-    send_media_group(
-        chat_id=chat_id,
-        media=IMAGE_RULES_MEDIA)
-    send_message(
-        chat_id=chat_id,
-        keyboard=KEYBOARD_MAIN_MENU,
-        message=MESSAGE_GREET_2)
+        chat_id=chat_id, keyboard=KEYBOARD_MAIN_MENU, message=MESSAGE_GREET_2)
     return
 
 
 def message_processing(update, context) -> None:
+    """Check user message. Update active_games if message match password and
+    user can host or join the game. Also bound user_id with the game throw
+    users_states."""
     global active_games
+    global users_passwords
     global users_states
+    update_teammate: bool = False
     user_id: int = update.effective_chat.id
     user_state: int | None = users_states.get(user_id, None)
     if not user_state or user_state == USER_STATE_IN_GAME:
         return
     password: str = update.message.text
-    if user_state == USER_STATE_CREATE:
-        if match(rf'\d{PASSWORD_LEN}', password):
-            user_name: str = None
-            users_states[user_id] = USER_STATE_IN_GAME
+    if match(rf'\d{PASSWORD_LEN}', password):
+        update_teammate: bool = True
+        user_name: str = represent_user(update)
+        users_states[user_id] = USER_STATE_IN_GAME
+        users_passwords[user_id] = password
+        if user_state == USER_STATE_CREATE:
             active_games[password] = {
                 'user_host': user_id,
-                'users': {
-                    user_id: {
-                        'points': 0,
-                        'name': user_name}},
+                'teammate_message_id': None,
+                'users': {user_id: represent_user_data(user_name)},
                 'users_can_join': True,
                 'game_verdicts': [None],
                 'game_answers_correct': 0,
                 'game_answers_incorrect': 0,
                 'users_penalties': [None],
-                'cards_seq': cards_seq,
+                'cards_seq': shuffle(cards_seq),
                 'last_card': -1,
                 'round_number': 0}
             message: str = MESSAGE_CREATE_GAME_PASS
-            # Вот тут еще надо отправить сообщение капитану со списком команд
-        else:
-            message: str = MESSAGE_CREATE_GAME_FAILED
-    elif user_state == USER_STATE_JOIN:
-        if password in active_games:
-            user_name: str = None
-            users_states[user_id] = USER_STATE_IN_GAME
-            active_games[password]['users'][user_id]= {
-                user_id: {
-                    'points': 0,
-                    'name': user_name}}
+        elif user_state == USER_STATE_JOIN:
+            active_games[password]['users'][
+                user_id] = represent_user_data(user_name)
             message: str = MESSAGE_JOIN_GAME_PASS
-            # Вот тут еще надо изменить сообщение капитану со списком команд
-        else:
+    else:
+        if user_state == USER_STATE_CREATE:
+            message: str = MESSAGE_CREATE_GAME_FAILED
+        elif user_state == USER_STATE_JOIN:
             message: str = MESSAGE_JOIN_GAME_FAILED
-    send_message(chat_id=user_id, message=message)
+    send_message(
+        chat_id=user_id,
+        message=message,
+        ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY)
+    if update_teammate:
+        update_teammate_message(active_games=active_games, password=password)
     return
-    
+
+
+def represent_user(update) -> str:
+    """Get user data and return his name."""
+    user = update.callback_query.from_user
+    user_first_name: str = user.first_name
+    user_second_name: str = user.second_name
+    user_username: str = user.username
+    if not user_first_name:
+        user_first_name = ''
+    if not user_second_name:
+        user_second_name = ''
+    if not user_username:
+        return f'{user_first_name} {user_second_name}'
+    return f'{user_first_name} {user_second_name} @{user_username}'
+
+
+def represent_user_data(username: str) -> dict[str, any]:
+    """Create user data to include in active_game['users']."""
+    return {'name': username,
+            'points': 0,
+            'points_as_fairy': 0,
+            'points_as_buka': 0,
+            'points_as_sandman': 0,
+            'perfect_round': 0,
+            'guess_all_times': 0,
+            'guess_none_times': 0}
+
+
+def update_teammate_message(
+        active_games: dict[str, dict],
+        password: int) -> None:
+    """Send (or edit) message to user_host with joined teammates."""
+    chat_id: int = active_games[password]['user_host']
+    message_id: int = active_games[password]['teammate_message_id']
+    text: str = (
+        MESSAGE_TEAMMATE + '\n'.join(
+            user['name'] for user in active_games[password]['users'].values()))
+    if message_id:
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text,
+            ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY_CAPITAN)
+    else:
+        message = send_message(
+            chat_id=chat_id,
+            message=text,
+            ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY_CAPITAN)
+        active_games[password]['teammate_message_id'] = message.message_id
+    return
 
 
 """❌❌❌ В стадии разработки ❌❌❌"""
@@ -320,7 +400,7 @@ def command_start_game(update, context) -> None:
     return
 
 
-def command_exit_game(update, context) -> None:
+def command_exit(update, context) -> None:
     return
 
 
@@ -365,17 +445,31 @@ def check_env(data: list) -> None:
     return
 
 
+# Если отредактировать сообщение: пропадут ли кнопки?
+def edit_message(chat_id: int, message_id: int, text: str) -> None:
+    """Edit message with given message_id in target telegram chat."""
+    bot.edit_message_text(
+            chat_id=chat_id, message_id=message_id, text=text)
+    return
+
+
 def send_message(
         chat_id: int,
-        keyboard: list[list[str]],
-        message: str) -> None:
+        message: str,
+        keyboard: list[list[str]] = None) -> None:
     """Send message to target telegram chat."""
     try:
-        bot.send_message(
-            chat_id=chat_id,
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
-            text=message)
+        if keyboard:
+            bot.send_message(
+                chat_id=chat_id,
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard, resize_keyboard=True),
+                text=message)
+        else:
+            bot.send_message(chat_id=chat_id, text=message)
         return
+    # Вот эти ошибки не перехватываются, надо их писать в логи и пропускать
+    # В целом логов не так много
     except TelegramError:
         raise Exception("Bot can't send the message!")
 
@@ -389,16 +483,13 @@ def send_photo(chat_id: int, photo: str, message: str = None) -> None:
         raise Exception(f'Bot failed to send photo-message! Error: {err}')
 
 
-def send_media_group(
-        chat_id: int,
-        media: list[InputMediaPhoto]) -> None:
+def send_media_group(chat_id: int, media: list[InputMediaPhoto]) -> None:
     """Send several photo to target telegram chat."""
     try:
         bot.send_media_group(chat_id=chat_id, media=media)
         return
     except TelegramError as err:
         raise Exception(f'Bot failed to send media! Error: {err}')
-
 
 
 if __name__ == '__main__1':
@@ -424,19 +515,18 @@ if __name__ == '__main__':
     # Тогда в функции будет:
     # my_dict = context.chat_data['my_dict']
     for command in [
-            ('add_penalty', command_add_penalty),
-            ('add_correct', command_add_correct),
-            ('add_incorrect', command_add_incorrect),
-            ('begin', command_begin_game),
-            ('create', command_create_game),            # Done!
-            ('exit', command_exit_game),
-            ('help', command_bot_help),                 # Done!
-            ('join', command_join_game),                # Done!
-            ('next_round', command_next_round),
-            ('rules', command_game_rules),              # Done!
-            ('start', command_start),                   # Done!
-            ('correct', command_correct_answer),
-            ('incorrect', command_incorrect_answer)]:
+            (BUTTON_ADD_CORRECT, command_add_correct),
+            (BUTTON_ADD_INCORRECT, command_add_incorrect),
+            (BUTTON_ADD_PENALTY, command_add_penalty),
+            (BUTTON_CREATE, command_create_game),                 # Done!
+            (BUTTON_CORRECT_ANSWER, command_correct_answer),
+            (BUTTON_EXIT, command_exit),
+            (BUTTON_HELP, command_help),                          # Done!
+            (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),
+            (BUTTON_JOIN, command_join_game),                     # Done!
+            (BUTTON_NEXT_ROUND, command_next_round),
+            (BUTTON_RULES, command_rules),                        # Done!
+            (BUTTON_START, command_start)]:                       # Done!
         dispatcher.add_handler(CommandHandler(command[0], command[1]))
     dispatcher.add_handler(MessageHandler(Filters.text, message_processing))
     updater.start_polling(poll_interval=API_TELEGRAM_UPDATE_SEC)
