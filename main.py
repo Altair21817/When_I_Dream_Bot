@@ -51,6 +51,9 @@ KEYBOARD_IN_GAME: list[list[str]] = [
     [BUTTON_CORRECT_ANSWER, BUTTON_INCORRECT_ANSWER]]
 KEYBOARD_IN_GAME_PAUSE: list[list[str]] = [
     [BUTTON_EXIT]]
+KEYBOARD_IN_GAME_PAUSE_CAPITAN: list[list[str]] = [
+    [BUTTON_NEXT_ROUND, BUTTON_EXIT, BUTTON_BREAK],
+    [BUTTON_ADD_CORRECT, BUTTON_ADD_INCORRECT, BUTTON_ADD_PENALTY]]
 KEYBOARD_IN_LOBBY: list[list[str]] = [
     [BUTTON_EXIT, BUTTON_RULES, BUTTON_HELP]]
 KEYBOARD_IN_LOBBY_CAPITAN: list[list[str]] = [
@@ -190,7 +193,7 @@ rotate_or_not: bool = choice([True, False])
 #   - бу-бу-бука: заработал больше всего очков как бука
 #   - лицемерище: заработал больше всего очков как песочный человек
 #   - кайфоломщик: получил больше всего пенальти
-active_games_test: dict[str, dict] = {
+_active_games_test: dict[str, dict] = {
     '/game_password': {
         'user_host': '/host_user_chat_id',
         'can_join': '/bool',
@@ -207,7 +210,7 @@ active_games_test: dict[str, dict] = {
         'round_number': 'round_number'}}
 active_games: dict[str, dict] = {}
 
-users_passwords_test: dict[int, int] = {
+_users_passwords_test: dict[int, int] = {
     '/user_1': '/password_1',
     '/user_2': '/password_5',
     '/user_3': '/password_1'}
@@ -227,6 +230,10 @@ users_states: dict[int, int] = {}
 """✅✅✅ ГОТОВЫЕ КОМАНДЫ ✅✅✅"""
 
 
+def command_begin(update, context) -> None:
+    return
+
+
 def command_create_game(update, context) -> None:
     """Set user state as USER_STATE_CREATE and ask to come up with password
     for creating new game session."""
@@ -238,6 +245,29 @@ def command_create_game(update, context) -> None:
         users_states[user_id] = USER_STATE_CREATE
         message: str = MESSAGE_CREATE_GAME
     send_message(chat_id=user_id, message=message)
+    return
+
+
+def command_exit(update, context) -> None:
+    # Надо отработать вариант, когда уходит капитан и надо передать управление
+    # А еще лучше - сделать управление по кругу
+    global users_passwords
+    user_id: int = update.effective_chat.id
+    if user_id not in users_passwords:
+        return
+    global active_games
+    global users_states
+    password = users_passwords[user_id]
+    username = active_games[password]['users'][user_id]['name']
+    active_games[password]['users'].pop(user_id, None)
+    users_states.pop(user_id, None)
+    if active_games[password]['users_can_join']:
+        update_teammate_message(active_games=active_games, password=password)
+    else:
+        send_message(
+            chat_id=active_games[password]['user_host'],
+            message=f'Сновидец {username} проснулся!',
+            ReplyKeyboardMarkup=KEYBOARD_IN_GAME_PAUSE_CAPITAN) # Проверить!
     return
 
 
@@ -345,9 +375,9 @@ def represent_user(update) -> str:
     user_second_name: str = user.second_name
     user_username: str = user.username
     if not user_first_name:
-        user_first_name = ''
+        user_first_name: str = ''
     if not user_second_name:
-        user_second_name = ''
+        user_second_name: str = ''
     if not user_username:
         return f'{user_first_name} {user_second_name}'
     return f'{user_first_name} {user_second_name} @{user_username}'
@@ -390,18 +420,6 @@ def update_teammate_message(
 
 
 """❌❌❌ В стадии разработки ❌❌❌"""
-
-
-def command_begin_game(update, context) -> None:
-    return
-
-
-def command_start_game(update, context) -> None:
-    return
-
-
-def command_exit(update, context) -> None:
-    return
 
 
 def command_correct_answer(update, context) -> None:
@@ -494,7 +512,7 @@ def send_media_group(chat_id: int, media: list[InputMediaPhoto]) -> None:
 
 if __name__ == '__main__1':
     from pprint import pprint
-    pprint(active_games_test)
+    
 
 
 if __name__ == '__main__':
@@ -518,6 +536,7 @@ if __name__ == '__main__':
             (BUTTON_ADD_CORRECT, command_add_correct),
             (BUTTON_ADD_INCORRECT, command_add_incorrect),
             (BUTTON_ADD_PENALTY, command_add_penalty),
+            (BUTTON_BEGIN, command_begin),
             (BUTTON_CREATE, command_create_game),                 # Done!
             (BUTTON_CORRECT_ANSWER, command_correct_answer),
             (BUTTON_EXIT, command_exit),
