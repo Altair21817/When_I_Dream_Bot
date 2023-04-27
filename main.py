@@ -20,6 +20,7 @@ API_TELEGRAM_UPDATE_SEC: int = 0.5
 
 # Проверить, что все кнопки реально нужны
 # Возможно добавить кнопку, чтобы завершить игру досрочно
+# Вообще надо нарисовать карту возможных развитий событий тыканья кнопок
 BUTTON_ADD_CORRECT: str = '/add_correct'
 BUTTON_ADD_INCORRECT: str = '/add_incorrect'
 BUTTON_ADD_PENALTY: str = '/add_penalty'
@@ -111,8 +112,8 @@ MESSAGE_CREATE_GAME_PASS: str = (
     f'А если вдруг ты решишь проснутся - используй команду {BUTTON_EXIT}. '
     'Игра при этом не остановится!\n\n'
     f'Чтобы разбудить всех сновидцев используй команду {BUTTON_BREAK}.')
-MESSAGE_LEAVE_GROUP_CHAT: str = (
-    'Я могу работать только в личных переписках и вынужден покинуть этот чат!')
+MESSAGE_GAME_BEGIN: str = (
+    'Твое путешествие начинается через.. 3.. 2.. 1.. Сейчас!')
 MESSAGE_GREET_1: str = (
     'Добро пожаловать, о чудесный сновидец!\n\n'
     'Сегодня ты отправляешься в невероятное путешествие по миру снов. Миру, '
@@ -167,6 +168,11 @@ MESSAGE_JOIN_GAME_PASS: str = (
     'начнет новую игру, а я тебе сразу же пришлю об этом уведомление! '
     'Желаю здорово повеселиться! А если вдруг ты решишь проснутся - используй '
     f'команду {BUTTON_EXIT}.')
+MESSAGE_LEAVE_GROUP_CHAT: str = (
+    'Я могу работать только в личных переписках и вынужден покинуть этот чат!')
+MESSAGE_NEXT_ROUND: str = (
+    'В следующем раунде ты будешь сновидцем, остальные игроки - волшебными '
+    f'созданиями. Когда все будут готовы, нажми {BUTTON_NEXT_ROUND}.')
 MESSAGE_TEAMMATE: str = (
     'Проверь список сновидцев ниже: когда вся команда будет в сборе, нажми '
     f'{BUTTON_BEGIN}, чтобы отправиться в путешествие. Желаю хорошей игры!'
@@ -176,13 +182,15 @@ PASSWORD_LEN: int = 5
 
 ROUND_SEC: int = 60 * 2
 
-USER_STATE_JOIN: int = 0
-USER_STATE_CREATE: int = 1
+USER_STATE_WANT_JOIN: int = 0
+USER_STATE_WANT_CREATE: int = 1
 USER_STATE_IN_GAME: int = 2
 
 bot: Bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
+# Тут шляпа какая-та, и в message_processing тоже
 cards_seq: list[int] = list(range(5))
+# Это должно быть в функции!!
 rotate_or_not: bool = choice([True, False])
 
 # Может быть сделать ачивки:
@@ -193,29 +201,9 @@ rotate_or_not: bool = choice([True, False])
 #   - бу-бу-бука: заработал больше всего очков как бука
 #   - лицемерище: заработал больше всего очков как песочный человек
 #   - кайфоломщик: получил больше всего пенальти
-_active_games_test: dict[str, dict] = {
-    '/game_password': {
-        'user_host': '/host_user_chat_id',
-        'can_join': '/bool',
-        'users': {
-            '/user_1_chat_id': {
-                'points': '/total_points',
-                'name': '/username_full_name)'}},
-        'verdicts': ['/user_1_True', '/user_2_True',],
-        'correct_answers': '/correct_answers_count',
-        'incorrect_answers': '/incorrect_answers_count',
-        'penalties': ['/user_1', '/user_3', '/user_3'],
-        'cards_seq': cards_seq,
-        'last_card': '/last_card_num',
-        'round_number': 'round_number'}}
-active_games: dict[str, dict] = {}
 
-_users_passwords_test: dict[int, int] = {
-    '/user_1': '/password_1',
-    '/user_2': '/password_5',
-    '/user_3': '/password_1'}
+active_games: dict[str, dict[str, any]] = {}
 users_passwords: dict[int, int] = {}
-
 users_states: dict[int, int] = {}
 
 # Admin может добавлять или отнимать баллы к правильным в конце тура!
@@ -227,10 +215,33 @@ users_states: dict[int, int] = {}
 
 # Сделать проверку, что игрок не в игре, чтобы ему кнопки не сбить!
 
+# Рассмотреть 2 ситуации
+#   - когда уходит игрок, который сыграл
+#   - когда уходит игрок, который не сыграл
+
 """✅✅✅ ГОТОВЫЕ КОМАНДЫ ✅✅✅"""
 
 
 def command_begin(update, context) -> None:
+    """Begin game session."""
+    global active_games
+    user_id: int = update.effective_chat.id
+    password: str | None = users_passwords.get(user_id, None)
+    if password is None:
+        return
+    game: dict[str, any] | None = active_games.get(password, None)
+    if game is None or user_id != game['user_host'] or game['game_started']:
+        return
+    for user in game['users']:
+        send_message(
+            chat_id=user,
+            message=MESSAGE_GAME_BEGIN,
+            keyboard=KEYBOARD_IN_GAME_PAUSE)
+    send_message(
+        chat_id=game['user_sleep'],
+        message=MESSAGE_NEXT_ROUND,
+        keyboard=KEYBOARD_IN_GAME_PAUSE_CAPITAN)
+    active_games[password]['game_started'] = True
     return
 
 
@@ -239,10 +250,11 @@ def command_create_game(update, context) -> None:
     for creating new game session."""
     global users_states
     user_id: int = update.effective_chat.id
-    if users_states.get(user_id, None) == USER_STATE_IN_GAME:
+    user_state: int | None = users_states.get(user_id, None)
+    if user_state is None or user_state == USER_STATE_IN_GAME:
         message: str = MESSAGE_CANT_CREATE_OR_JOIN
     else:
-        users_states[user_id] = USER_STATE_CREATE
+        users_states[user_id] = USER_STATE_WANT_CREATE
         message: str = MESSAGE_CREATE_GAME
     send_message(chat_id=user_id, message=message)
     return
@@ -251,6 +263,8 @@ def command_create_game(update, context) -> None:
 def command_exit(update, context) -> None:
     # Надо отработать вариант, когда уходит капитан и надо передать управление
     # А еще лучше - сделать управление по кругу
+    # А еще надо отработать вариант, что exit было нажато простым или капитаном
+    # где угодно в игре.
     global users_passwords
     user_id: int = update.effective_chat.id
     if user_id not in users_passwords:
@@ -274,6 +288,7 @@ def command_exit(update, context) -> None:
 def command_help(update, context) -> None:
     """Send bot manual to user and pin message."""
     chat_id: int = update.effective_chat.id
+    # Вот тут - уедут ли кнопки..
     message: any = send_message(chat_id=chat_id, message=MESSAGE_HELP)
     bot.pinChatMessage(chat_id=chat_id, message_id=message.message_id)
     return
@@ -284,12 +299,17 @@ def command_join_game(update, context) -> None:
     the user to an existing game."""
     global users_states
     user_id: int = update.effective_chat.id
-    if users_states.get(user_id, None) == USER_STATE_IN_GAME:
+    user_state: int | None = users_states.get(user_id, None)
+    if user_state is None or user_state == USER_STATE_IN_GAME:
         message: str = MESSAGE_CANT_CREATE_OR_JOIN
     else:
-        users_states[user_id] = USER_STATE_JOIN
+        users_states[user_id] = USER_STATE_WANT_JOIN
         message: str = MESSAGE_JOIN_GAME
     send_message(chat_id=user_id, message=message)
+    return
+
+
+def command_next_round(update, context) -> None:
     return
 
 
@@ -325,52 +345,55 @@ def message_processing(update, context) -> None:
     global active_games
     global users_passwords
     global users_states
-    update_teammate: bool = False
+    update_teammates: bool = False
     user_id: int = update.effective_chat.id
     user_state: int | None = users_states.get(user_id, None)
     if not user_state or user_state == USER_STATE_IN_GAME:
         return
     password: str = update.message.text
     if match(rf'\d{PASSWORD_LEN}', password):
-        update_teammate: bool = True
+        update_teammates: bool = True
         user_name: str = represent_user(update)
         users_states[user_id] = USER_STATE_IN_GAME
         users_passwords[user_id] = password
-        if user_state == USER_STATE_CREATE:
+        if user_state == USER_STATE_WANT_CREATE:
             active_games[password] = {
                 'user_host': user_id,
-                'teammate_message_id': None,
-                'users': {user_id: represent_user_data(user_name)},
-                'users_can_join': True,
-                'game_verdicts': [None],
-                'game_answers_correct': 0,
-                'game_answers_incorrect': 0,
-                'users_penalties': [None],
+                'teammates_message_id': None,
+                'game_started': False,
                 'cards_seq': shuffle(cards_seq),
+                'users': {user_id: represent_user_data(user_name)},
+                'user_sleep': user_id,
+                'votes': [None],
+                'voted_users': [None],
+                'round_answers_correct': 0,
+                'round_answers_incorrect': 0,
+                'round_users_penalties': [None],
                 'last_card': -1,
-                'round_number': 0}
+                'round_number': 0,
+                'round_end_time': None}
             message: str = MESSAGE_CREATE_GAME_PASS
-        elif user_state == USER_STATE_JOIN:
+        elif user_state == USER_STATE_WANT_JOIN:
             active_games[password]['users'][
                 user_id] = represent_user_data(user_name)
             message: str = MESSAGE_JOIN_GAME_PASS
     else:
-        if user_state == USER_STATE_CREATE:
+        if user_state == USER_STATE_WANT_CREATE:
             message: str = MESSAGE_CREATE_GAME_FAILED
-        elif user_state == USER_STATE_JOIN:
+        elif user_state == USER_STATE_WANT_JOIN:
             message: str = MESSAGE_JOIN_GAME_FAILED
     send_message(
         chat_id=user_id,
         message=message,
         ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY)
-    if update_teammate:
+    if update_teammates:
         update_teammate_message(active_games=active_games, password=password)
     return
 
 
 def represent_user(update) -> str:
     """Get user data and return his name."""
-    user = update.callback_query.from_user
+    user: any = update.callback_query.from_user
     user_first_name: str = user.first_name
     user_second_name: str = user.second_name
     user_username: str = user.username
@@ -385,14 +408,16 @@ def represent_user(update) -> str:
 
 def represent_user_data(username: str) -> dict[str, any]:
     """Create user data to include in active_game['users']."""
-    return {'name': username,
-            'points': 0,
-            'points_as_fairy': 0,
-            'points_as_buka': 0,
-            'points_as_sandman': 0,
-            'perfect_round': 0,
-            'guess_all_times': 0,
-            'guess_none_times': 0}
+    return {
+        'guess_all_words': False,
+        'guess_none_words': False,
+        'user_name': username,
+        'penalties_total': 0,
+        'points_as_buka': 0,
+        'points_as_fairy': 0,
+        'points_as_sandman': 0,
+        'points_as_sleeper': 0,
+        'points_total': 0}
 
 
 def update_teammate_message(
@@ -423,26 +448,36 @@ def update_teammate_message(
 
 
 def command_correct_answer(update, context) -> None:
+    """"""
     return
 
 
 def command_incorrect_answer(update, context) -> None:
-    return
-
-
-def command_next_round(update, context) -> None:
+    """"""
     return
 
 
 def command_add_penalty(update, context) -> None:
+    """"""
     return
 
 
 def command_add_correct(update, context) -> None:
+    """"""
     return
 
 
 def command_add_incorrect(update, context) -> None:
+    """"""
+    return
+
+
+def finish_round() -> None:
+    """"""
+    return
+
+def form_achievements(users: dict[int, dict[str, any]]) -> None:
+    """"""
     return
 
 
@@ -536,7 +571,7 @@ if __name__ == '__main__':
             (BUTTON_ADD_CORRECT, command_add_correct),
             (BUTTON_ADD_INCORRECT, command_add_incorrect),
             (BUTTON_ADD_PENALTY, command_add_penalty),
-            (BUTTON_BEGIN, command_begin),
+            (BUTTON_BEGIN, command_begin),                        # Done!
             (BUTTON_CREATE, command_create_game),                 # Done!
             (BUTTON_CORRECT_ANSWER, command_correct_answer),
             (BUTTON_EXIT, command_exit),
