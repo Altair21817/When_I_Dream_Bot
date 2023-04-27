@@ -203,6 +203,7 @@ rotate_or_not: bool = choice([True, False])
 #   - кайфоломщик: получил больше всего пенальти
 
 active_games: dict[str, dict[str, any]] = {}
+# А вот непонятно - тут int или не int будет приходить, скорее всего str
 users_passwords: dict[int, int] = {}
 users_states: dict[int, int] = {}
 
@@ -261,27 +262,27 @@ def command_create_game(update, context) -> None:
 
 
 def command_exit(update, context) -> None:
-    # Надо отработать вариант, когда уходит капитан и надо передать управление
-    # А еще лучше - сделать управление по кругу
-    # А еще надо отработать вариант, что exit было нажато простым или капитаном
-    # где угодно в игре.
     global users_passwords
     user_id: int = update.effective_chat.id
-    if user_id not in users_passwords:
+    password: str | None = users_passwords.get(user_id, None)
+    if password is None:
         return
     global active_games
     global users_states
-    password = users_passwords[user_id]
-    username = active_games[password]['users'][user_id]['name']
+    game: dict[str, any] = active_games.get(password, None)
+    if game is None:
+        return
+    username: str = game['users'][user_id]['name']
     active_games[password]['users'].pop(user_id, None)
     users_states.pop(user_id, None)
-    if active_games[password]['users_can_join']:
+    if len(active_games[password]['users']) == 0:
+        active_games.pop(password, None)
+    elif not active_games[password]['game_started']:
         update_teammate_message(active_games=active_games, password=password)
     else:
         send_message(
             chat_id=active_games[password]['user_host'],
-            message=f'Сновидец {username} проснулся!',
-            ReplyKeyboardMarkup=KEYBOARD_IN_GAME_PAUSE_CAPITAN) # Проверить!
+            message=f'Сновидец {username} проснулся!')
     return
 
 
