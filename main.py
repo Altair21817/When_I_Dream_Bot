@@ -25,7 +25,6 @@ BUTTON_ADD_CORRECT: str = '/add_correct'
 BUTTON_ADD_INCORRECT: str = '/add_incorrect'
 BUTTON_ADD_PENALTY: str = '/add_penalty'
 BUTTON_BEGIN: str = '/begin'
-BUTTON_BREAK: str = '/break'
 BUTTON_CREATE: str = '/create'
 BUTTON_CORRECT_ANSWER: str = '/✅'
 BUTTON_EXIT: str = '/exit'
@@ -53,7 +52,7 @@ KEYBOARD_IN_GAME: list[list[str]] = [
 KEYBOARD_IN_GAME_PAUSE: list[list[str]] = [
     [BUTTON_EXIT]]
 KEYBOARD_IN_GAME_PAUSE_CAPITAN: list[list[str]] = [
-    [BUTTON_NEXT_ROUND, BUTTON_EXIT, BUTTON_BREAK],
+    [BUTTON_NEXT_ROUND, BUTTON_EXIT],
     [BUTTON_ADD_CORRECT, BUTTON_ADD_INCORRECT, BUTTON_ADD_PENALTY]]
 KEYBOARD_IN_LOBBY: list[list[str]] = [
     [BUTTON_EXIT, BUTTON_RULES, BUTTON_HELP]]
@@ -110,8 +109,7 @@ MESSAGE_CREATE_GAME_PASS: str = (
     f'Когда вся команда будет в сборе, используй команду {BUTTON_BEGIN} для '
     'начала игры. Желаю здорово повеселиться!\n\n'
     f'А если вдруг ты решишь проснутся - используй команду {BUTTON_EXIT}. '
-    'Игра при этом не остановится!\n\n'
-    f'Чтобы разбудить всех сновидцев используй команду {BUTTON_BREAK}.')
+    'Игра при этом не остановится!')
 MESSAGE_GAME_BEGIN: str = (
     'Твое путешествие начинается через.. 3.. 2.. 1.. Сейчас!')
 MESSAGE_GREET_1: str = (
