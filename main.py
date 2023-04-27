@@ -22,7 +22,9 @@ API_TELEGRAM_UPDATE_SEC: int = 0.5
 # Возможно добавить кнопку, чтобы завершить игру досрочно
 # Вообще надо нарисовать карту возможных развитий событий тыканья кнопок
 BUTTON_ADD_CORRECT: str = '/add_correct'
+BUTTON_ADD_CORRECT_STORY: str = '/add_correct_story'
 BUTTON_ADD_INCORRECT: str = '/add_incorrect'
+BUTTON_ADD_INCORRECT_STORY: str = '/add_incorrect_story'
 BUTTON_ADD_PENALTY: str = '/add_penalty'
 BUTTON_BEGIN: str = '/begin'
 BUTTON_CREATE: str = '/create'
