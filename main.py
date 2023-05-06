@@ -22,17 +22,17 @@ API_TELEGRAM_UPDATE_SEC: int = 0.5
 # Проверить, что все кнопки реально нужны
 # Возможно добавить кнопку, чтобы завершить игру досрочно
 # Вообще надо нарисовать карту возможных развитий событий тыканья кнопок
-BUTTON_ADD_PENALTY: str = '/add_penalty'
+BUTTON_ADD_ME_PENALTY: str = '/add_me_penalty'
 BUTTON_BEGIN: str = '/begin'
 BUTTON_CREATE: str = '/create'
-BUTTON_CORRECT_ANSWER: str = '/✅'
+BUTTON_CORRECT_ANSWER: str = '/YES'
 BUTTON_EXIT: str = '/exit'
 BUTTON_HELP: str = '/help'
-BUTTON_INCORRECT_ANSWER: str = '/❌'
+BUTTON_INCORRECT_ANSWER: str = '/NO'
 BUTTON_JOIN: str = '/join'
-BUTTON_NEXT_ROUND: str = '/next_round'
 BUTTON_RULES: str = '/rules'
 BUTTON_START: str = '/start'
+BUTTON_START_NEXT_ROUND: str = '/next_round'
 
 # А карты можно отправлять так:
 # for i in range(0, round) and range(round, len(players))
@@ -52,17 +52,15 @@ for file_path in IMAGE_RULES:
 KEYBOARD_EMPTY: list[list[str]] = [
     ['']]
 KEYBOARD_IN_GAME: list[list[str]] = [
-    [BUTTON_CORRECT_ANSWER, BUTTON_INCORRECT_ANSWER]]
-KEYBOARD_IN_GAME_PAUSE: list[list[str]] = [
-    [BUTTON_ADD_PENALTY, BUTTON_EXIT]]
-KEYBOARD_IN_GAME_PAUSE_CAPITAN: list[list[str]] = [
-    [BUTTON_NEXT_ROUND, BUTTON_EXIT]]
+    [BUTTON_CORRECT_ANSWER, BUTTON_ADD_ME_PENALTY, BUTTON_INCORRECT_ANSWER]]
 KEYBOARD_IN_LOBBY: list[list[str]] = [
-    [BUTTON_EXIT, BUTTON_RULES, BUTTON_HELP]]
-KEYBOARD_IN_LOBBY_CAPITAN: list[list[str]] = [
-    [BUTTON_BEGIN, BUTTON_EXIT, BUTTON_RULES, BUTTON_HELP]]
+    [BUTTON_RULES, BUTTON_HELP, BUTTON_EXIT]]
+KEYBOARD_IN_LOBBY_HOST: list[list[str]] = [
+    [BUTTON_BEGIN, BUTTON_RULES, BUTTON_HELP, BUTTON_EXIT]]
 KEYBOARD_MAIN_MENU: list[list[str]] = [
     [BUTTON_CREATE, BUTTON_JOIN, BUTTON_RULES, BUTTON_HELP]]
+KEYBOARD_START_NEXT_ROUND: list[list[str]] = [
+    [BUTTON_START_NEXT_ROUND, BUTTON_EXIT]]
 
 BUKA: str = 'buka'
 DREAMER: str = 'dreamer'
@@ -157,7 +155,7 @@ MESSAGE_LEAVE_GROUP_CHAT: str = (
     'Я могу работать только в личных переписках и вынужден покинуть этот чат!')
 MESSAGE_NEXT_ROUND: str = (
     'В следующем раунде ты будешь сновидцем, остальные игроки - волшебными '
-    f'созданиями. Когда все будут готовы, нажми {BUTTON_NEXT_ROUND}.')
+    f'созданиями. Когда все будут готовы, нажми {KEYBOARD_START_NEXT_ROUND}.')
 MESSAGE_TEAMMATE: str = (
     'Проверь список сновидцев ниже: когда вся команда будет в сборе, нажми '
     f'{BUTTON_BEGIN}, чтобы отправиться в путешествие. Желаю хорошей игры!'
@@ -227,6 +225,14 @@ users_states: dict[int, int] = {}
 #   - когда уходит игрок, который не сыграл
 
 
+def check_env(data: list) -> None:
+    """Checks env data."""
+    if not all(data):
+        logger.critical('Env data is empty!')
+        raise SystemExit
+    return
+
+
 def command_add_penalty(update, context) -> None:
     """Add penalty to user if user in game."""
     global active_games
@@ -255,11 +261,11 @@ def command_begin(update, context) -> None:
         send_message(
             chat_id=user,
             message=MESSAGE_GAME_BEGIN,
-            keyboard=KEYBOARD_IN_GAME_PAUSE)
+            keyboard=KEYBOARD_IN_LOBBY)
     send_message(
         chat_id=game['user_host'],
         message=MESSAGE_NEXT_ROUND,
-        keyboard=KEYBOARD_IN_GAME_PAUSE_CAPITAN)
+        keyboard=KEYBOARD_START_NEXT_ROUND)
     active_games[password]['game_started'] = True
     return
 
@@ -408,6 +414,75 @@ def command_start(update, context) -> None:
     return
 
 
+def finish_game(
+        active_games: dict[str, dict[str, any]],
+        password: int) -> None:
+    """"""
+    active_games.pop(password)
+    pass
+
+
+def finish_round(
+        active_games: dict[str, dict[str, any]],
+        password: int) -> None:
+    """Add personal points to each user for ended round.
+    Finish game and form achievements and results if all rounds are passed."""
+    correct_answers: int = active_games[password]['round_answers_correct']
+    incorrect_answers: int = active_games[password]['round_answers_incorrect']
+    message = MESSAGE_ROUND_RESULTS.format(
+        correct_answers=correct_answers, incorrect_answers=incorrect_answers)
+    for user, user_data in active_games[password]['users'].items():
+        user_role: str = user_data['current_role']
+        if user_role == BUKA:
+            active_games[password]['users'][user][
+                'points_as_buka'] += incorrect_answers
+        elif user_role == DREAMER:
+            active_games[password]['users'][user][
+                    'points_as_dreamer'] += correct_answers
+            if incorrect_answers == 0:
+                active_games[password]['users'][user][
+                    'guess_all_words'] = True
+            elif correct_answers == 0:
+                active_games[password]['users'][user][
+                    'guess_none_words'] = True
+        elif user_role == FAIRY:
+            active_games[password]['users'][user][
+                'points_as_fairy'] += correct_answers
+        else:
+            if correct_answers == incorrect_answers:
+                sandman_points: int = correct_answers + 2
+            elif abs(correct_answers - incorrect_answers) == 1:
+                sandman_points: int = max(correct_answers, incorrect_answers)
+            else:
+                sandman_points: int = min(correct_answers, incorrect_answers)
+            active_games[password]['users'][user][
+                'points_as_sandman'] += sandman_points
+        send_message(
+            chat_id=user,
+            message=message,
+            keyboard=KEYBOARD_IN_LOBBY)
+    active_games[password]['round_answers_correct'] = 0
+    active_games[password]['round_answers_incorrect'] = 0
+    active_games[password]['round_number'] += 1
+    round_number: int = active_games[password]['round_number']
+    if round_number < (len(active_games[password]['users']) - 1):
+        send_message(
+            chat_id=list(active_games[password]['users'].keys())[round_number],
+            message=MESSAGE_NEXT_ROUND,
+            keyboard=KEYBOARD_START_NEXT_ROUND)
+    else:
+        finish_game()
+    return
+
+
+# Если отредактировать сообщение: пропадут ли кнопки?
+def edit_message(chat_id: int, message_id: int, text: str) -> None:
+    """Edit message with given message_id in target telegram chat."""
+    bot.edit_message_text(
+            chat_id=chat_id, message_id=message_id, text=text)
+    return
+
+
 def message_processing(update, context) -> None:
     """Check user message. Update active_games if message match password and
     user can host or join the game. Also bound user_id with the game throw
@@ -492,6 +567,37 @@ def represent_user_data(username: str) -> dict[str, any]:
         'points_total': 0}
 
 
+def send_media_group(chat_id: int, media: list[InputMediaPhoto]) -> None:
+    """Send several photo to target telegram chat."""
+    try:
+        bot.send_media_group(chat_id=chat_id, media=media)
+        return
+    except TelegramError as err:
+        raise Exception(f'Bot failed to send media! Error: {err}')
+
+
+def send_message(
+        chat_id: int,
+        message: str,
+        keyboard: list[list[str]] = None) -> None:
+    """Send message to target telegram chat."""
+    try:
+        if keyboard:
+            bot.send_message(
+                chat_id=chat_id,
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard, resize_keyboard=True),
+                text=message)
+        else:
+            bot.send_message(chat_id=chat_id, text=message)
+        return
+    # Вот эти ошибки не перехватываются, надо их писать в логи и пропускать
+    # В целом логов не так много
+    # Сделать отдельную функцию, которая бы отправляла бы ошибки мне
+    except TelegramError:
+        raise Exception("Bot can't send the message!")
+
+
 def send_next_word_image(
         active_games: dict[str, dict[str, any]],
         password: int) -> None:
@@ -504,6 +610,15 @@ def send_next_word_image(
     for user in users_list:
         send_photo(chat_id=user, photo=next_photo)
     active_games[password]['next_word_image'] += 1
+    return
+
+
+def send_photo(chat_id: int, photo: str, message: str = None) -> None:
+    """Send photo with optional message to target telegram chat."""
+    try:
+        bot.send_photo(caption=message, chat_id=chat_id, photo=photo)
+    except TelegramError as err:
+        raise Exception(f'Bot failed to send photo-message! Error: {err}')
     return
 
 
@@ -542,66 +657,6 @@ def update_game_votes(update, vote: int):
     return
 
 
-def finish_game(
-        active_games: dict[str, dict[str, any]],
-        password: int) -> None:
-    active_games.pop(password)
-    pass
-
-
-def finish_round(
-        active_games: dict[str, dict[str, any]],
-        password: int) -> None:
-    """Add personal points to each user for ended round.
-    Finish game and form achievements and results if all rounds are passed."""
-    correct_answers: int = active_games[password]['round_answers_correct']
-    incorrect_answers: int = active_games[password]['round_answers_incorrect']
-    message = MESSAGE_ROUND_RESULTS.format(
-        correct_answers=correct_answers, incorrect_answers=incorrect_answers)
-    for user, user_data in active_games[password]['users'].items():
-        user_role: str = user_data['current_role']
-        if user_role == BUKA:
-            active_games[password]['users'][user][
-                'points_as_buka'] += incorrect_answers
-        elif user_role == DREAMER:
-            active_games[password]['users'][user][
-                    'points_as_dreamer'] += correct_answers
-            if incorrect_answers == 0:
-                active_games[password]['users'][user][
-                    'guess_all_words'] = True
-            elif correct_answers == 0:
-                active_games[password]['users'][user][
-                    'guess_none_words'] = True
-        elif user_role == FAIRY:
-            active_games[password]['users'][user][
-                'points_as_fairy'] += correct_answers
-        else:
-            if correct_answers == incorrect_answers:
-                sandman_points: int = correct_answers + 2
-            elif abs(correct_answers - incorrect_answers) == 1:
-                sandman_points: int = max(correct_answers, incorrect_answers)
-            else:
-                sandman_points: int = min(correct_answers, incorrect_answers)
-            active_games[password]['users'][user][
-                'points_as_sandman'] += sandman_points
-        send_message(
-            chat_id=user,
-            message=message,
-            keyboard=KEYBOARD_IN_GAME_PAUSE)
-    active_games[password]['round_answers_correct'] = 0
-    active_games[password]['round_answers_incorrect'] = 0
-    active_games[password]['round_number'] += 1
-    round_number: int = active_games[password]['round_number']
-    if round_number < (len(active_games[password]['users']) - 1):
-        send_message(
-            chat_id=list(active_games[password]['users'].keys())[round_number],
-            message=MESSAGE_NEXT_ROUND,
-            keyboard=KEYBOARD_IN_GAME_PAUSE_CAPITAN)
-    else:
-        finish_game()
-    return
-
-
 def update_teammate_message(
         active_games: dict[str, dict],
         password: int) -> None:
@@ -616,70 +671,14 @@ def update_teammate_message(
             chat_id=chat_id,
             message_id=message_id,
             text=text,
-            ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY_CAPITAN)
+            ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY_HOST)
     else:
         message = send_message(
             chat_id=chat_id,
             message=text,
-            ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY_CAPITAN)
+            ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY_HOST)
         active_games[password]['teammate_message_id'] = message.message_id
     return
-
-
-def check_env(data: list) -> None:
-    """Checks env data."""
-    if not all(data):
-        logger.critical('Env data is empty!')
-        raise SystemExit
-    return
-
-
-# Если отредактировать сообщение: пропадут ли кнопки?
-def edit_message(chat_id: int, message_id: int, text: str) -> None:
-    """Edit message with given message_id in target telegram chat."""
-    bot.edit_message_text(
-            chat_id=chat_id, message_id=message_id, text=text)
-    return
-
-
-def send_message(
-        chat_id: int,
-        message: str,
-        keyboard: list[list[str]] = None) -> None:
-    """Send message to target telegram chat."""
-    try:
-        if keyboard:
-            bot.send_message(
-                chat_id=chat_id,
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard, resize_keyboard=True),
-                text=message)
-        else:
-            bot.send_message(chat_id=chat_id, text=message)
-        return
-    # Вот эти ошибки не перехватываются, надо их писать в логи и пропускать
-    # В целом логов не так много
-    # Сделать отдельную функцию, которая бы отправляла бы ошибки мне
-    except TelegramError:
-        raise Exception("Bot can't send the message!")
-
-
-def send_photo(chat_id: int, photo: str, message: str = None) -> None:
-    """Send photo with optional message to target telegram chat."""
-    try:
-        bot.send_photo(caption=message, chat_id=chat_id, photo=photo)
-        return
-    except TelegramError as err:
-        raise Exception(f'Bot failed to send photo-message! Error: {err}')
-
-
-def send_media_group(chat_id: int, media: list[InputMediaPhoto]) -> None:
-    """Send several photo to target telegram chat."""
-    try:
-        bot.send_media_group(chat_id=chat_id, media=media)
-        return
-    except TelegramError as err:
-        raise Exception(f'Bot failed to send media! Error: {err}')
 
 
 if __name__ == '__main__1':
@@ -705,7 +704,7 @@ if __name__ == '__main__':
     # Тогда в функции будет:
     # my_dict = context.chat_data['my_dict']
     for command in [
-            (BUTTON_ADD_PENALTY, command_add_penalty),
+            (BUTTON_ADD_ME_PENALTY, command_add_penalty),
             (BUTTON_BEGIN, command_begin),
             (BUTTON_CREATE, command_create_game),
             (BUTTON_CORRECT_ANSWER, command_correct_answer),
@@ -713,9 +712,9 @@ if __name__ == '__main__':
             (BUTTON_HELP, command_help),
             (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),
             (BUTTON_JOIN, command_join_game),
-            (BUTTON_NEXT_ROUND, command_next_round),
             (BUTTON_RULES, command_rules),
-            (BUTTON_START, command_start)]:
+            (BUTTON_START, command_start),
+            (BUTTON_START_NEXT_ROUND, command_next_round)]:
         dispatcher.add_handler(CommandHandler(command[0], command[1]))
     dispatcher.add_handler(MessageHandler(Filters.text, message_processing))
     updater.start_polling(poll_interval=API_TELEGRAM_UPDATE_SEC)
