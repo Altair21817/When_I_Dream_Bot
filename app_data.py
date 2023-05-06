@@ -8,6 +8,29 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN: str = os.getenv('TELEGRAM_BOT_TOKEN')
 ALL_DATA: list[str] = [TELEGRAM_BOT_TOKEN]
 
+ACHIEVEMENTS: dict[str, str] = {
+    'points_total': (
+        '\n\nВсем угощение за мой счет: заработал(а) больше '
+        'всего очков!\n{}'),
+    'guess_all_words': (
+        '\n\nCон на яву: отгадал(а) все слова!\n{}'),
+    'points_dreamer': (
+        '\n\nЯркие сны: угадал(а) больше всего слов!\n{}'),
+    'points_fairy': (
+        '\n\nКрестная фея: заработал(а) больше всего очков как фея!\n{}'),
+    'points_buka':  (
+        '\n\nБу-бу-бука: заработал(а) больше всего очков как бука!\n{}'),
+    'points_sandman': (
+        '\n\nЛицемерище: заработал(а) больше всего очков как '
+        'песочный человек!\n{}'),
+    'points_penalty': (
+        '\n\nКайфоломщик: получил(а) больше всего пенальти!\n{}'),
+    'guess_none_words': (
+        '\n\nCущий кошмар: не отгадал(а) ни одного слова!\n{}')}
+ACHIEVEMENTS_KEYS_GUESS: list[str] = ['guess_all_words', 'guess_none_words']
+ACHIEVEMENTS_KEYS_OTHER: list[str] = [
+    key for key in ACHIEVEMENTS.keys() if key not in ACHIEVEMENTS_KEYS_GUESS]
+
 # Вообще надо нарисовать карту возможных развитий событий тыканья кнопок
 BUTTON_ADD_ME_PENALTY: str = '/add_me_penalty'
 BUTTON_BEGIN: str = '/begin'
