@@ -178,6 +178,14 @@ MESSAGE_PLAYER_ROLE: dict[str, str] = {
         'снов в гармонии. Помогай сновидцу отбиваться от кошмаров, если он не '
         'справляется, сбивай его с пути, если путь его слишком легок. Важно, '
         'чтобы сновидец отгадал половину слов!')}
+MESSAGE_ROUND_RESULTS: str = (
+    'Та-да! А вот и утро! Но перед тем как будить нашего спящего '
+    'путешественника, попросите его в мельчайших подробностях рассказать свой '
+    'сон. Пусть это будет абсолютный полет фантазии, полный внезапных '
+    'сумасбродных сюжетных поворотов!\n\n'
+    'Кстати, а вот такие получились результаты раунда:\n'
+    '- слов угадано верно: {correct_answers}\n'
+    '- слов угадано неверно: {incorrect_answers}')
 
 PASSWORD_LEN: int = 5
 
@@ -421,6 +429,7 @@ def message_processing(update, context) -> None:
         if user_state == USER_STATE_WANT_CREATE:
             for _ in range(SHUFFLE_IMAGE_WORDS_COUNT):
                 shuffle(IMAGE_CARDS)
+            # А может user_host не хранить, а брать первый элемент users?
             active_games[password] = {
                 'user_host': user_id,
                 'teammates_message_id': None,
@@ -477,9 +486,9 @@ def represent_user_data(username: str) -> dict[str, any]:
         'user_name': username,
         'penalties_total': 0,
         'points_as_buka': 0,
+        'points_as_dreamer': 0,
         'points_as_fairy': 0,
         'points_as_sandman': 0,
-        'points_as_sleeper': 0,
         'points_total': 0}
 
 
@@ -533,12 +542,64 @@ def update_game_votes(update, vote: int):
     return
 
 
+def finish_game(
+        active_games: dict[str, dict[str, any]],
+        password: int) -> None:
+    active_games.pop(password)
+    pass
+
+
 def finish_round(
         active_games: dict[str, dict[str, any]],
         password: int) -> None:
     """Add personal points to each user for ended round.
     Finish game and form achievements and results if all rounds are passed."""
-    pass
+    correct_answers: int = active_games[password]['round_answers_correct']
+    incorrect_answers: int = active_games[password]['round_answers_incorrect']
+    message = MESSAGE_ROUND_RESULTS.format(
+        correct_answers=correct_answers, incorrect_answers=incorrect_answers)
+    for user, user_data in active_games[password]['users'].items():
+        user_role: str = user_data['current_role']
+        if user_role == BUKA:
+            active_games[password]['users'][user][
+                'points_as_buka'] += incorrect_answers
+        elif user_role == DREAMER:
+            active_games[password]['users'][user][
+                    'points_as_dreamer'] += correct_answers
+            if incorrect_answers == 0:
+                active_games[password]['users'][user][
+                    'guess_all_words'] = True
+            elif correct_answers == 0:
+                active_games[password]['users'][user][
+                    'guess_none_words'] = True
+        elif user_role == FAIRY:
+            active_games[password]['users'][user][
+                'points_as_fairy'] += correct_answers
+        else:
+            if correct_answers == incorrect_answers:
+                sandman_points: int = correct_answers + 2
+            elif abs(correct_answers - incorrect_answers) == 1:
+                sandman_points: int = max(correct_answers, incorrect_answers)
+            else:
+                sandman_points: int = min(correct_answers, incorrect_answers)
+            active_games[password]['users'][user][
+                'points_as_sandman'] += sandman_points
+        send_message(
+            chat_id=user,
+            message=message,
+            keyboard=KEYBOARD_IN_GAME_PAUSE)
+    active_games[password]['round_answers_correct'] = 0
+    active_games[password]['round_answers_incorrect'] = 0
+    active_games[password]['round_number'] += 1
+    round_number: int = active_games[password]['round_number']
+    if round_number < (len(active_games[password]['users']) - 1):
+        send_message(
+            chat_id=list(active_games[password]['users'].keys())[round_number],
+            message=MESSAGE_NEXT_ROUND,
+            keyboard=KEYBOARD_IN_GAME_PAUSE_CAPITAN)
+    else:
+        finish_game()
+    return
 
 
 def update_teammate_message(
@@ -598,6 +659,7 @@ def send_message(
         return
     # Вот эти ошибки не перехватываются, надо их писать в логи и пропускать
     # В целом логов не так много
+    # Сделать отдельную функцию, которая бы отправляла бы ошибки мне
     except TelegramError:
         raise Exception("Bot can't send the message!")
 
@@ -644,16 +706,16 @@ if __name__ == '__main__':
     # my_dict = context.chat_data['my_dict']
     for command in [
             (BUTTON_ADD_PENALTY, command_add_penalty),
-            (BUTTON_BEGIN, command_begin),                        # Done!
-            (BUTTON_CREATE, command_create_game),                 # Done!
-            (BUTTON_CORRECT_ANSWER, command_correct_answer),      # Done!
-            (BUTTON_EXIT, command_exit),                          # Done!
-            (BUTTON_HELP, command_help),                          # Done!
-            (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),  # Done!
-            (BUTTON_JOIN, command_join_game),                     # Done!
-            (BUTTON_NEXT_ROUND, command_next_round),              # Done!
-            (BUTTON_RULES, command_rules),                        # Done!
-            (BUTTON_START, command_start)]:                       # Done!
+            (BUTTON_BEGIN, command_begin),
+            (BUTTON_CREATE, command_create_game),
+            (BUTTON_CORRECT_ANSWER, command_correct_answer),
+            (BUTTON_EXIT, command_exit),
+            (BUTTON_HELP, command_help),
+            (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),
+            (BUTTON_JOIN, command_join_game),
+            (BUTTON_NEXT_ROUND, command_next_round),
+            (BUTTON_RULES, command_rules),
+            (BUTTON_START, command_start)]:
         dispatcher.add_handler(CommandHandler(command[0], command[1]))
     dispatcher.add_handler(MessageHandler(Filters.text, message_processing))
     updater.start_polling(poll_interval=API_TELEGRAM_UPDATE_SEC)
