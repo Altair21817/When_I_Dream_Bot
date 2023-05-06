@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import logging
 import os
 from pathlib import Path
-from random import choice, shuffle
+from random import shuffle
 from re import match
 from telegram import Bot, InputMediaPhoto, ReplyKeyboardMarkup, TelegramError
 from telegram.ext import (
@@ -39,8 +39,11 @@ BUTTON_START: str = '/start'
 
 # А карты можно отправлять так:
 # for i in range(0, round) and range(round, len(players))
-IMAGE_CARDS: Path = Path('res/words')
-IMAGE_CARDS_СOUNT: int = len(list(IMAGE_CARDS.iterdir()))
+IMAGE_CARDS_ORIGINAL_PATH: Path = Path('res/words_original')
+IMAGE_CARDS_ROTATED_PATH: Path = Path('res/words_rotated')
+IMAGE_CARDS: list[Path] = (
+    list(IMAGE_CARDS_ORIGINAL_PATH.iterdir())
+    + list(IMAGE_CARDS_ROTATED_PATH.iterdir()))
 IMAGE_RULES: list[Path] = [
     Path(f'res/rules/0{i}_правила.jpg') for i in range(8)]
 IMAGE_RULES_MEDIA: list[InputMediaPhoto] = []
@@ -49,6 +52,8 @@ for file_path in IMAGE_RULES:
         IMAGE_RULES_MEDIA.append(InputMediaPhoto(
             media=file.read(), caption=Path(file_path).name))
 
+KEYBOARD_EMPTY: list[list[str]] = [
+    ['']]
 KEYBOARD_IN_GAME: list[list[str]] = [
     [BUTTON_CORRECT_ANSWER, BUTTON_INCORRECT_ANSWER]]
 KEYBOARD_IN_GAME_PAUSE: list[list[str]] = [
@@ -63,35 +68,18 @@ KEYBOARD_IN_LOBBY_CAPITAN: list[list[str]] = [
 KEYBOARD_MAIN_MENU: list[list[str]] = [
     [BUTTON_CREATE, BUTTON_JOIN, BUTTON_RULES, BUTTON_HELP]]
 
+BUKA: str = 'buka'
+DREAMER: str = 'dreamer'
+FAIRY: str = 'fairy'
+SANDMAN: str = 'sandman'
 CHARACTERS_CONFIG: dict[int, dict] = {
-    4: {
-        'fairy': 1,
-        'buka': 1,
-        'sandman': 2},
-    5: {
-        'fairy': 2,
-        'buka': 1,
-        'sandman': 2},
-    6: {
-        'fairy': 3,
-        'buka': 2,
-        'sandman': 1},
-    7: {
-        'fairy': 3,
-        'buka': 2,
-        'sandman': 2},
-    8: {
-        'fairy': 4,
-        'buka': 3,
-        'sandman': 1},
-    9: {
-        'fairy': 4,
-        'buka': 3,
-        'sandman': 2},
-    10: {
-        'fairy': 5,
-        'buka': 4,
-        'sandman': 1}}
+    4:  {BUKA: 1, FAIRY: 1, SANDMAN: 2},
+    5:  {BUKA: 1, FAIRY: 2, SANDMAN: 2},
+    6:  {BUKA: 2, FAIRY: 3, SANDMAN: 1},
+    7:  {BUKA: 2, FAIRY: 3, SANDMAN: 2},
+    8:  {BUKA: 3, FAIRY: 4, SANDMAN: 1},
+    9:  {BUKA: 3, FAIRY: 4, SANDMAN: 2},
+    10: {BUKA: 4, FAIRY: 5, SANDMAN: 1}}
 
 MESSAGE_CANT_CREATE_OR_JOIN: str = (
     'Сновидец, я вижу, что ты уже участвуешь в одной из игр. Чтобы создать '
@@ -177,21 +165,34 @@ MESSAGE_TEAMMATE: str = (
     'Проверь список сновидцев ниже: когда вся команда будет в сборе, нажми '
     f'{BUTTON_BEGIN}, чтобы отправиться в путешествие. Желаю хорошей игры!'
     '\n\n')
+MESSAGE_PLAYER_MUST_SLEEP: str = (
+    'Теперь закрывай глаза, баю-бай. Игра началась!')
+MESSAGE_PLAYER_ROLE: dict[str, str] = {
+    BUKA: (
+        'В этом раунде ты будешь грозной букой. Обманывай сновидца, сбивай '
+        'его с пути, преврати его сны в кошмары! Важно, чтобы сновидец не '
+        'отгадал ни единого слова!'),
+    FAIRY: (
+        'В этом раунде ты будешь доброй феей. Всячески помогай сновидцу '
+        'пройти по его нелегкому пути. Важно, чтобы сновидец отгадал '
+        'все-все-все слова!'),
+    SANDMAN: (
+        'В этом раунде ты будешь песочным человеком. Поддерживай хрупкий мир '
+        'снов в гармонии. Помогай сновидцу отбиваться от кошмаров, если он не '
+        'справляется, сбивай его с пути, если путь его слишком легок. Важно, '
+        'чтобы сновидец отгадал половину слов!')}
 
 PASSWORD_LEN: int = 5
 
 ROUND_SEC: int = 60 * 2
+
+SHUFFLE_IMAGE_WORDS_COUNT: int = 3
 
 USER_STATE_WANT_JOIN: int = 0
 USER_STATE_WANT_CREATE: int = 1
 USER_STATE_IN_GAME: int = 2
 
 bot: Bot = Bot(token=TELEGRAM_BOT_TOKEN)
-
-# Тут шляпа какая-та, и в message_processing тоже
-cards_seq: list[int] = list(range(5))
-# Это должно быть в функции!!
-rotate_or_not: bool = choice([True, False])
 
 # Может быть сделать ачивки:
 #   - яркие сны: угадал больше всего слов
@@ -239,7 +240,7 @@ def command_begin(update, context) -> None:
             message=MESSAGE_GAME_BEGIN,
             keyboard=KEYBOARD_IN_GAME_PAUSE)
     send_message(
-        chat_id=game['user_sleep'],
+        chat_id=game['user_host'],
         message=MESSAGE_NEXT_ROUND,
         keyboard=KEYBOARD_IN_GAME_PAUSE_CAPITAN)
     active_games[password]['game_started'] = True
@@ -262,6 +263,8 @@ def command_create_game(update, context) -> None:
 
 
 def command_exit(update, context) -> None:
+    """Delete user game state and exclude user from game."""
+    # Вот тут надо передать права хоста следующему по списку
     global users_passwords
     user_id: int = update.effective_chat.id
     password: str | None = users_passwords.get(user_id, None)
@@ -311,12 +314,60 @@ def command_join_game(update, context) -> None:
 
 
 def command_next_round(update, context) -> None:
+    """Shuffle roles and start new game round."""
+    # Предусмотреть, чтобы не было двойного нажатия
+    global active_games
+    global users_passwords
+    user_id: int = update.effective_chat.id
+    password: str | None = users_passwords.get(user_id, None)
+    if password is None or password not in active_games:
+        return
+    round_number: int = active_games[password]['round_number']
+    users_list: list[int] = list(active_games[password]['users'].keys())
+    if user_id != users_list[round_number]:
+        return
+    send_message(
+        chat_id=user_id,
+        message=MESSAGE_PLAYER_MUST_SLEEP,
+        keyboard=KEYBOARD_EMPTY)
+    users_list.pop(user_id)
+    characters_config: dict[str, int] = CHARACTERS_CONFIG[len(users_list)]
+    available_characters: list[str] = []
+    for character, count in characters_config.items():
+        available_characters.extend([character] * count)
+    shuffle(available_characters)
+    for user in users_list:
+        current_role: str = available_characters.pop()
+        active_games[password]['users'][
+            user]['current_role'] = current_role
+        send_message(
+            chat_id=user,
+            message=MESSAGE_PLAYER_ROLE[current_role],
+            keyboard=KEYBOARD_IN_GAME)
+    active_games[password]['users'][user_id]['current_role'] = DREAMER
+    send_next_word_image(active_games=active_games, password=password)
+    return
+
+
+def send_next_word_image(
+        active_games: dict[str, dict[str, any]],
+        password: int) -> None:
+    """Send game word (image) to players except the dreamer."""
+    round_number: int = active_games[password]['round_number']
+    users_list: list[int] = list(active_games[password]['users'].keys())
+    users_list.pop(users_list[round_number])
+    next_photo_number: int = active_games[password]['next_word_image']
+    next_photo: Path = active_games[password]['cards_seq'][next_photo_number]
+    for user in users_list:
+        send_photo(chat_id=user, photo=next_photo)
+    active_games[password]['next_word_image'] += 1
     return
 
 
 def command_rules(update, context) -> None:
     """Send game rules to user and pin message."""
     chat_id: int = update.effective_chat.id
+    # Вот тут - уедут ли кнопки..
     message: any = send_media_group(chat_id=chat_id, media=IMAGE_RULES_MEDIA)
     bot.pinChatMessage(chat_id=chat_id, message_id=message.message_id)
     return
@@ -349,7 +400,7 @@ def message_processing(update, context) -> None:
     update_teammates: bool = False
     user_id: int = update.effective_chat.id
     user_state: int | None = users_states.get(user_id, None)
-    if not user_state or user_state == USER_STATE_IN_GAME:
+    if user_state not in (USER_STATE_WANT_JOIN, USER_STATE_WANT_CREATE):
         return
     password: str = update.message.text
     if match(rf'\d{PASSWORD_LEN}', password):
@@ -358,30 +409,31 @@ def message_processing(update, context) -> None:
         users_states[user_id] = USER_STATE_IN_GAME
         users_passwords[user_id] = password
         if user_state == USER_STATE_WANT_CREATE:
+            for _ in range(SHUFFLE_IMAGE_WORDS_COUNT):
+                shuffle(IMAGE_CARDS)
             active_games[password] = {
                 'user_host': user_id,
                 'teammates_message_id': None,
                 'game_started': False,
-                'cards_seq': shuffle(cards_seq),
+                'cards_seq': IMAGE_CARDS,
                 'users': {user_id: represent_user_data(user_name)},
-                'user_sleep': user_id,
                 'votes': [None],
                 'voted_users': [None],
                 'round_answers_correct': 0,
                 'round_answers_incorrect': 0,
                 'round_users_penalties': [None],
-                'last_card': -1,
+                'next_word_image': 0,
                 'round_number': 0,
                 'round_end_time': None}
             message: str = MESSAGE_CREATE_GAME_PASS
-        elif user_state == USER_STATE_WANT_JOIN:
+        else:
             active_games[password]['users'][
                 user_id] = represent_user_data(user_name)
             message: str = MESSAGE_JOIN_GAME_PASS
     else:
         if user_state == USER_STATE_WANT_CREATE:
             message: str = MESSAGE_CREATE_GAME_FAILED
-        elif user_state == USER_STATE_WANT_JOIN:
+        else:
             message: str = MESSAGE_JOIN_GAME_FAILED
     send_message(
         chat_id=user_id,
@@ -410,6 +462,7 @@ def represent_user(update) -> str:
 def represent_user_data(username: str) -> dict[str, any]:
     """Create user data to include in active_game['users']."""
     return {
+        'current_role': None,
         'guess_all_words': False,
         'guess_none_words': False,
         'user_name': username,
@@ -426,7 +479,7 @@ def update_teammate_message(
         password: int) -> None:
     """Send (or edit) message to user_host with joined teammates."""
     chat_id: int = active_games[password]['user_host']
-    message_id: int = active_games[password]['teammate_message_id']
+    message_id: int | None = active_games[password]['teammate_message_id']
     text: str = (
         MESSAGE_TEAMMATE + '\n'.join(
             user['name'] for user in active_games[password]['users'].values()))
@@ -476,6 +529,7 @@ def command_add_incorrect(update, context) -> None:
 def finish_round() -> None:
     """"""
     return
+
 
 def form_achievements(users: dict[int, dict[str, any]]) -> None:
     """"""
@@ -547,8 +601,8 @@ def send_media_group(chat_id: int, media: list[InputMediaPhoto]) -> None:
 
 
 if __name__ == '__main__1':
-    from pprint import pprint
-    
+    # from pprint import pprint
+    pass
 
 
 if __name__ == '__main__':
