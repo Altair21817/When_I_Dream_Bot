@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import logging
 import os
@@ -21,10 +22,6 @@ API_TELEGRAM_UPDATE_SEC: int = 0.5
 # Проверить, что все кнопки реально нужны
 # Возможно добавить кнопку, чтобы завершить игру досрочно
 # Вообще надо нарисовать карту возможных развитий событий тыканья кнопок
-BUTTON_ADD_CORRECT: str = '/add_correct'
-BUTTON_ADD_CORRECT_STORY: str = '/add_correct_story'
-BUTTON_ADD_INCORRECT: str = '/add_incorrect'
-BUTTON_ADD_INCORRECT_STORY: str = '/add_incorrect_story'
 BUTTON_ADD_PENALTY: str = '/add_penalty'
 BUTTON_BEGIN: str = '/begin'
 BUTTON_CREATE: str = '/create'
@@ -57,10 +54,9 @@ KEYBOARD_EMPTY: list[list[str]] = [
 KEYBOARD_IN_GAME: list[list[str]] = [
     [BUTTON_CORRECT_ANSWER, BUTTON_INCORRECT_ANSWER]]
 KEYBOARD_IN_GAME_PAUSE: list[list[str]] = [
-    [BUTTON_EXIT]]
+    [BUTTON_ADD_PENALTY, BUTTON_EXIT]]
 KEYBOARD_IN_GAME_PAUSE_CAPITAN: list[list[str]] = [
-    [BUTTON_NEXT_ROUND, BUTTON_EXIT],
-    [BUTTON_ADD_CORRECT, BUTTON_ADD_INCORRECT, BUTTON_ADD_PENALTY]]
+    [BUTTON_NEXT_ROUND, BUTTON_EXIT]]
 KEYBOARD_IN_LOBBY: list[list[str]] = [
     [BUTTON_EXIT, BUTTON_RULES, BUTTON_HELP]]
 KEYBOARD_IN_LOBBY_CAPITAN: list[list[str]] = [
@@ -73,6 +69,7 @@ DREAMER: str = 'dreamer'
 FAIRY: str = 'fairy'
 SANDMAN: str = 'sandman'
 CHARACTERS_CONFIG: dict[int, dict] = {
+    3:  {BUKA: 1, FAIRY: 1, SANDMAN: 1},
     4:  {BUKA: 1, FAIRY: 1, SANDMAN: 2},
     5:  {BUKA: 1, FAIRY: 2, SANDMAN: 2},
     6:  {BUKA: 2, FAIRY: 3, SANDMAN: 1},
@@ -247,6 +244,12 @@ def command_begin(update, context) -> None:
     return
 
 
+def command_correct_answer(update, context) -> None:
+    """Send True to update_game_votes."""
+    update_game_votes(update=update, vote=True)
+    return
+
+
 def command_create_game(update, context) -> None:
     """Set user state as USER_STATE_CREATE and ask to come up with password
     for creating new game session."""
@@ -298,6 +301,12 @@ def command_help(update, context) -> None:
     return
 
 
+def command_incorrect_answer(update, context) -> None:
+    """Send False to update_game_votes."""
+    update_game_votes(update=update, vote=False)
+    return
+
+
 def command_join_game(update, context) -> None:
     """Set user state as USER_STATE_JOIN and ask for a password to connect
     the user to an existing game."""
@@ -320,7 +329,9 @@ def command_next_round(update, context) -> None:
     global users_passwords
     user_id: int = update.effective_chat.id
     password: str | None = users_passwords.get(user_id, None)
-    if password is None or password not in active_games:
+    if (password is None
+            or password not in active_games
+            or not active_games[password]['game_started']):
         return
     round_number: int = active_games[password]['round_number']
     users_list: list[int] = list(active_games[password]['users'].keys())
@@ -345,22 +356,9 @@ def command_next_round(update, context) -> None:
             message=MESSAGE_PLAYER_ROLE[current_role],
             keyboard=KEYBOARD_IN_GAME)
     active_games[password]['users'][user_id]['current_role'] = DREAMER
+    active_games[password]['users'][user_id][
+        'round_end_time'] = datetime.now() + timedelta(seconds=ROUND_SEC)
     send_next_word_image(active_games=active_games, password=password)
-    return
-
-
-def send_next_word_image(
-        active_games: dict[str, dict[str, any]],
-        password: int) -> None:
-    """Send game word (image) to players except the dreamer."""
-    round_number: int = active_games[password]['round_number']
-    users_list: list[int] = list(active_games[password]['users'].keys())
-    users_list.pop(users_list[round_number])
-    next_photo_number: int = active_games[password]['next_word_image']
-    next_photo: Path = active_games[password]['cards_seq'][next_photo_number]
-    for user in users_list:
-        send_photo(chat_id=user, photo=next_photo)
-    active_games[password]['next_word_image'] += 1
     return
 
 
@@ -417,11 +415,10 @@ def message_processing(update, context) -> None:
                 'game_started': False,
                 'cards_seq': IMAGE_CARDS,
                 'users': {user_id: represent_user_data(user_name)},
-                'votes': [None],
-                'voted_users': [None],
+                'votes': [],
+                'voted_users': [],
                 'round_answers_correct': 0,
                 'round_answers_incorrect': 0,
-                'round_users_penalties': [None],
                 'next_word_image': 0,
                 'round_number': 0,
                 'round_end_time': None}
@@ -474,6 +471,64 @@ def represent_user_data(username: str) -> dict[str, any]:
         'points_total': 0}
 
 
+def send_next_word_image(
+        active_games: dict[str, dict[str, any]],
+        password: int) -> None:
+    """Send game word (image) to players except the dreamer."""
+    round_number: int = active_games[password]['round_number']
+    users_list: list[int] = list(active_games[password]['users'].keys())
+    users_list.pop(users_list[round_number])
+    next_photo_number: int = active_games[password]['next_word_image']
+    next_photo: Path = active_games[password]['cards_seq'][next_photo_number]
+    for user in users_list:
+        send_photo(chat_id=user, photo=next_photo)
+    active_games[password]['next_word_image'] += 1
+    return
+
+
+def update_game_votes(update, vote: int):
+    """Update active_game votes.
+    If all users voted update round_answers.
+    If round time's up - finish round."""
+    # Везде ли писать user_id?
+    global active_games
+    global users_passwords
+    user_id: int = update.effective_chat.id
+    password: str | None = users_passwords.get(user_id, None)
+    if (password is None
+            or password not in active_games
+            or not active_games[password]['game_started']
+            or user_id in active_games[password]['voted_users']):
+        return
+    active_games[password]['votes'].append(vote)
+    active_games[password]['voted_users'].append(user_id)
+    """Voted users are always 1 less than total because dreamer can't vote."""
+    if len(active_games[password]['voted_users']) != (
+            len(active_games[password]['users'] - 1)):
+        return
+    count_true: int = active_games[password]['votes'].count(True)
+    count_false: int = active_games[password]['votes'].count(False)
+    if count_true >= count_false:
+        active_games[password]['round_answers_correct'] += 1
+    else:
+        active_games[password]['round_answers_incorrect'] += 1
+    active_games[password]['votes'] = []
+    active_games[password]['voted_users'] = []
+    if datetime.now() < active_games[password]['round_end_time']:
+        send_next_word_image(active_games=active_games, password=password)
+    else:
+        finish_round(active_games=active_games, password=password)
+    return
+
+
+def finish_round(
+        active_games: dict[str, dict[str, any]],
+        password: int) -> None:
+    """Add personal points to each user for ended round.
+    Finish game and form achievements and results if all rounds are passed."""
+    pass
+
+
 def update_teammate_message(
         active_games: dict[str, dict],
         password: int) -> None:
@@ -501,32 +556,7 @@ def update_teammate_message(
 """❌❌❌ В стадии разработки ❌❌❌"""
 
 
-def command_correct_answer(update, context) -> None:
-    """"""
-    return
-
-
-def command_incorrect_answer(update, context) -> None:
-    """"""
-    return
-
-
 def command_add_penalty(update, context) -> None:
-    """"""
-    return
-
-
-def command_add_correct(update, context) -> None:
-    """"""
-    return
-
-
-def command_add_incorrect(update, context) -> None:
-    """"""
-    return
-
-
-def finish_round() -> None:
     """"""
     return
 
@@ -537,12 +567,6 @@ def form_achievements(users: dict[int, dict[str, any]]) -> None:
 
 
 """⚠️⚠️⚠️ Основные функции ⚠️⚠️⚠️"""
-
-
-def change_answers_points(password: int, answer: str, points: int) -> None:
-    global active_games
-    active_games[password][answer] += points
-    return
 
 
 def check_env(data: list) -> None:
@@ -623,17 +647,15 @@ if __name__ == '__main__':
     # Тогда в функции будет:
     # my_dict = context.chat_data['my_dict']
     for command in [
-            (BUTTON_ADD_CORRECT, command_add_correct),
-            (BUTTON_ADD_INCORRECT, command_add_incorrect),
             (BUTTON_ADD_PENALTY, command_add_penalty),
             (BUTTON_BEGIN, command_begin),                        # Done!
             (BUTTON_CREATE, command_create_game),                 # Done!
-            (BUTTON_CORRECT_ANSWER, command_correct_answer),
-            (BUTTON_EXIT, command_exit),
+            (BUTTON_CORRECT_ANSWER, command_correct_answer),      # Done!
+            (BUTTON_EXIT, command_exit),                          # Done!
             (BUTTON_HELP, command_help),                          # Done!
-            (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),
+            (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),  # Done!
             (BUTTON_JOIN, command_join_game),                     # Done!
-            (BUTTON_NEXT_ROUND, command_next_round),
+            (BUTTON_NEXT_ROUND, command_next_round),              # Done!
             (BUTTON_RULES, command_rules),                        # Done!
             (BUTTON_START, command_start)]:                       # Done!
         dispatcher.add_handler(CommandHandler(command[0], command[1]))
