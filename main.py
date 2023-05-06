@@ -218,7 +218,19 @@ users_states: dict[int, int] = {}
 #   - когда уходит игрок, который сыграл
 #   - когда уходит игрок, который не сыграл
 
-"""✅✅✅ ГОТОВЫЕ КОМАНДЫ ✅✅✅"""
+
+def command_add_penalty(update, context) -> None:
+    """Add penalty to user if user in game."""
+    global active_games
+    global users_passwords
+    user_id: int = update.effective_chat.id
+    password: str | None = users_passwords.get(user_id, None)
+    if (password is None
+            or password not in active_games
+            or not active_games[password]['game_started']):
+        return
+    active_games[password]['users'][user_id]['penalties_total'] += 1
+    return
 
 
 def command_begin(update, context) -> None:
@@ -551,22 +563,6 @@ def update_teammate_message(
             ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY_CAPITAN)
         active_games[password]['teammate_message_id'] = message.message_id
     return
-
-
-"""❌❌❌ В стадии разработки ❌❌❌"""
-
-
-def command_add_penalty(update, context) -> None:
-    """"""
-    return
-
-
-def form_achievements(users: dict[int, dict[str, any]]) -> None:
-    """"""
-    return
-
-
-"""⚠️⚠️⚠️ Основные функции ⚠️⚠️⚠️"""
 
 
 def check_env(data: list) -> None:
