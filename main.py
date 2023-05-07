@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
 import logging
+import os
 from pathlib import Path
 from random import shuffle
 from re import match
 from telegram import Bot, InputMediaPhoto, ReplyKeyboardMarkup, TelegramError
 from telegram.ext import (
     CommandHandler, Dispatcher, Filters, MessageHandler, Updater)
+import sys
 
 import app_logger
 
@@ -589,27 +591,34 @@ if __name__ == '__main__':
     except SystemExit as err:
         """Error in code. Program execution is not possible."""
         logger.critical(err)
-        raise
+        sys.exit()
 
-    updater: Updater = Updater(token=TELEGRAM_BOT_TOKEN)
-    dispatcher: Dispatcher = updater.dispatcher
+    def __restart_program():
+        python = sys.executable
+        os.execl(python, python, *sys.argv)
 
-    # Можно попробовать:
-    # dispatcher.chat_data['my_dict'] = my_dict
-    # Тогда в функции будет:
-    # my_dict = context.chat_data['my_dict']
-    for command in [
-            (BUTTON_ADD_ME_PENALTY, command_add_penalty),
-            (BUTTON_BEGIN, command_begin),
-            (BUTTON_CREATE, command_create_game),
-            (BUTTON_CORRECT_ANSWER, command_correct_answer),
-            (BUTTON_EXIT, command_exit),
-            (BUTTON_HELP, command_help),
-            (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),
-            (BUTTON_JOIN, command_join_game),
-            (BUTTON_RULES, command_rules),
-            (BUTTON_START, command_start),
-            (BUTTON_START_NEXT_ROUND, command_next_round)]:
-        dispatcher.add_handler(CommandHandler(command[0], command[1]))
-    dispatcher.add_handler(MessageHandler(Filters.text, message_processing))
-    updater.start_polling(poll_interval=API_TELEGRAM_UPDATE_SEC)
+    try:
+        updater: Updater = Updater(token=TELEGRAM_BOT_TOKEN)
+        dispatcher: Dispatcher = updater.dispatcher
+        # Можно попробовать:
+        # dispatcher.chat_data['my_dict'] = my_dict
+        # Тогда в функции будет:
+        # my_dict = context.chat_data['my_dict']
+        for command in [
+                (BUTTON_ADD_ME_PENALTY, command_add_penalty),
+                (BUTTON_BEGIN, command_begin),
+                (BUTTON_CREATE, command_create_game),
+                (BUTTON_CORRECT_ANSWER, command_correct_answer),
+                (BUTTON_EXIT, command_exit),
+                (BUTTON_HELP, command_help),
+                (BUTTON_INCORRECT_ANSWER, command_incorrect_answer),
+                (BUTTON_JOIN, command_join_game),
+                (BUTTON_RULES, command_rules),
+                (BUTTON_START, command_start),
+                (BUTTON_START_NEXT_ROUND, command_next_round)]:
+            dispatcher.add_handler(CommandHandler(command[0], command[1]))
+        dispatcher.add_handler(MessageHandler(Filters.text, message_processing))
+        updater.start_polling(poll_interval=API_TELEGRAM_UPDATE_SEC)
+    except Exception as err:
+        logger.critical(err)
+        __restart_program()
