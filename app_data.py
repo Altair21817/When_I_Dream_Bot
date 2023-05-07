@@ -8,6 +8,11 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN: str = os.getenv('TELEGRAM_BOT_TOKEN')
 ALL_DATA: list[str] = [TELEGRAM_BOT_TOKEN]
 
+BUKA: str = 'buka'
+DREAMER: str = 'dreamer'
+FAIRY: str = 'fairy'
+SANDMAN: str = 'sandman'
+
 ACHIEVEMENTS: dict[str, str] = {
     'points_total': (
         '\n\nВсем угощение за мой счет: заработал(а) больше '
@@ -49,6 +54,10 @@ IMAGE_CARDS_ROTATED_PATH: Path = Path('res/words_rotated')
 IMAGE_CARDS: list[Path] = (
     list(IMAGE_CARDS_ORIGINAL_PATH.iterdir())
     + list(IMAGE_CARDS_ROTATED_PATH.iterdir()))
+IMAGE_CHARACTERS: dict[str, Path] = {
+    BUKA: Path('res/characters/х0_бука.jpg'),
+    FAIRY: Path('res/characters/х02_фея.jpg'),
+    SANDMAN: Path('res/characters/х1_песочный_человек.jpg')}
 IMAGE_RULES: list[Path] = [
     Path(f'res/rules/0{i}_правила.jpg') for i in range(8)]
 IMAGE_RULES_MEDIA: list[InputMediaPhoto] = []
@@ -70,10 +79,6 @@ KEYBOARD_MAIN_MENU: list[list[str]] = [
 KEYBOARD_START_NEXT_ROUND: list[list[str]] = [
     [BUTTON_START_NEXT_ROUND, BUTTON_EXIT]]
 
-BUKA: str = 'buka'
-DREAMER: str = 'dreamer'
-FAIRY: str = 'fairy'
-SANDMAN: str = 'sandman'
 CHARACTERS_CONFIG: dict[int, dict] = {
     3:  {BUKA: 1, FAIRY: 1, SANDMAN: 1},
     4:  {BUKA: 1, FAIRY: 1, SANDMAN: 2},
