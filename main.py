@@ -28,7 +28,8 @@ from app_data import (
     MESSAGE_CANT_CREATE_OR_JOIN, MESSAGE_CREATE_GAME,
     MESSAGE_CREATE_GAME_FAILED, MESSAGE_CREATE_GAME_PASS, MESSAGE_GAME_BEGIN,
     MESSAGE_GREET_1, MESSAGE_GREET_2, MESSAGE_HELP, MESSAGE_JOIN_GAME,
-    MESSAGE_JOIN_GAME_FAILED, MESSAGE_JOIN_GAME_PASS, MESSAGE_LEAVE_GROUP_CHAT,
+    MESSAGE_JOIN_GAME_FAILED, MESSAGE_JOIN_GAME_PASS,
+    MESSAGE_IN_GAME_BUTTONS_INSTRUCTIONS, MESSAGE_LEAVE_GROUP_CHAT,
     MESSAGE_NEXT_ROUND, MESSAGE_TEAMMATE, MESSAGE_PLAYER_MUST_SLEEP,
     MESSAGE_PLAYER_ROLE, MESSAGE_ROUND_RESULTS,
 
@@ -214,6 +215,10 @@ def command_next_round(update, context) -> None:
             chat_id=user,
             photo=IMAGE_CHARACTERS[current_role],
             message=MESSAGE_PLAYER_ROLE[current_role])
+        send_message(
+            chat_id=user,
+            message=MESSAGE_IN_GAME_BUTTONS_INSTRUCTIONS,
+            keyboard=KEYBOARD_IN_GAME)
     active_games[password]['round_end_time'] = (
         datetime.now() + timedelta(seconds=ROUND_SEC))
     send_next_word_image(active_games=active_games, password=password)
