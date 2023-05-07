@@ -47,8 +47,6 @@ active_games: dict[str, dict[str, any]] = {}
 users_passwords: dict[int, int] = {}
 users_states: dict[int, int] = {}
 
-
-
 # А если будет дабл-клик по кнопке?
 # Сделать проверку, что игрок не в игре, чтобы ему кнопки не сбить!
 
