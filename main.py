@@ -8,14 +8,17 @@ from telegram.ext import (
     CommandHandler, Dispatcher, Filters, MessageHandler, Updater)
 
 import app_logger
+
 from app_data import (
     ALL_DATA, TELEGRAM_BOT_TOKEN,
+
+    ACHIEVEMENTS, ACHIEVEMENTS_KEYS_GUESS, ACHIEVEMENTS_KEYS_OTHER,
 
     BUTTON_ADD_ME_PENALTY, BUTTON_BEGIN, BUTTON_CREATE, BUTTON_CORRECT_ANSWER,
     BUTTON_EXIT, BUTTON_HELP, BUTTON_INCORRECT_ANSWER, BUTTON_JOIN,
     BUTTON_RULES, BUTTON_START, BUTTON_START_NEXT_ROUND,
 
-    IMAGE_CARDS, IMAGE_RULES_MEDIA,
+    IMAGE_CARDS, IMAGE_CHARACTERS, IMAGE_RULES_MEDIA,
 
     KEYBOARD_EMPTY, KEYBOARD_IN_GAME, KEYBOARD_IN_LOBBY,
     KEYBOARD_IN_LOBBY_HOST, KEYBOARD_MAIN_MENU, KEYBOARD_START_NEXT_ROUND,
@@ -43,14 +46,7 @@ active_games: dict[str, dict[str, any]] = {}
 users_passwords: dict[int, int] = {}
 users_states: dict[int, int] = {}
 
-# Может быть сделать ачивки:
-#   - яркие сны: угадал больше всего слов
-#   - сон на яву: угадал верно все слова
-#   - сущий кошмар: не отгадал ни одного слова
-#   - крестная фея: заработал больше всего очков среди фея
-#   - бу-бу-бука: заработал больше всего очков как бука
-#   - лицемерище: заработал больше всего очков как песочный человек
-#   - кайфоломщик: получил больше всего пенальти
+
 
 # А если будет дабл-клик по кнопке?
 # Сделать проверку, что игрок не в игре, чтобы ему кнопки не сбить!
@@ -203,6 +199,7 @@ def command_next_round(update, context) -> None:
         chat_id=user_id,
         message=MESSAGE_PLAYER_MUST_SLEEP,
         keyboard=KEYBOARD_EMPTY)
+    active_games[password]['users'][user_id]['current_role'] = DREAMER
     users_list.pop(user_id)
     characters_config: dict[str, int] = CHARACTERS_CONFIG[len(users_list)]
     available_characters: list[str] = []
@@ -213,13 +210,12 @@ def command_next_round(update, context) -> None:
         current_role: str = available_characters.pop()
         active_games[password]['users'][
             user]['current_role'] = current_role
-        send_message(
+        send_photo(
             chat_id=user,
-            message=MESSAGE_PLAYER_ROLE[current_role],
-            keyboard=KEYBOARD_IN_GAME)
-    active_games[password]['users'][user_id]['current_role'] = DREAMER
-    active_games[password]['users'][user_id][
-        'round_end_time'] = datetime.now() + timedelta(seconds=ROUND_SEC)
+            photo=IMAGE_CHARACTERS[current_role],
+            message=MESSAGE_PLAYER_ROLE[current_role])
+    active_games[password]['round_end_time'] = (
+        datetime.now() + timedelta(seconds=ROUND_SEC))
     send_next_word_image(active_games=active_games, password=password)
     return
 
@@ -253,9 +249,69 @@ def command_start(update, context) -> None:
 def finish_game(
         active_games: dict[str, dict[str, any]],
         password: int) -> None:
-    """"""
-    active_games.pop(password)
-    pass
+    """Send game results to each user.
+    Delete users from users_passwords, users_states.
+    Delete game from active_games."""
+    global users_passwords
+    global users_states
+    achievements = {
+        'guess_all_words': [],
+        'guess_none_words': [],
+        'points_total': [0, None],
+        'points_dreamer': [0, None],
+        'points_fairy': [0, None],
+        'points_buka': [0, None],
+        'points_sandman': [0, None],
+        'points_penalty': [0, None]}
+    results: list[tuple[int, str]] = []
+    for user_data in active_games[password]['users'].values():
+        username = user_data['user_name']
+        user_data['points_total'] = (
+            user_data['points_buka']
+            + user_data['points_dreamer']
+            + user_data['points_fairy']
+            + user_data['points_sandman']
+            - user_data['points_penalty'])
+        results.append((
+            user_data['points_total'] - user_data['points_penalty'],
+            username))
+        for key in ACHIEVEMENTS_KEYS_GUESS:
+            if user_data[key]:
+                achievements[key].append(username)
+        for key in ACHIEVEMENTS_KEYS_OTHER:
+            if user_data[key] == achievements[key][0]:
+                achievements[key].append(username)
+            elif user_data[key] > achievements[key][0]:
+                achievements[key] = [user_data[key], username]
+    results.sort(reverse=True)
+    results_list: list[str] = ['🏆 Результаты путешествия 🏆\n']
+    for result in results:
+        results_list.append(f'· {result[0]} {result[1]}')
+    achievements_result: list[str] = ['🎯 Ачивки 🎯']
+    for key in ACHIEVEMENTS_KEYS_GUESS:
+        if achievements[key]:
+            achievements_result.append(ACHIEVEMENTS[key].format(
+                '\n· '.join(achievements[key])))
+    for key in ACHIEVEMENTS_KEYS_OTHER:
+        if None not in achievements[key]:
+            achievements_result.append(ACHIEVEMENTS[key].format(
+                points=achievements[key][0],
+                players='\n· '.join(achievements[key][1:])))
+    message_achievements: str = ''.join(achievements_result)
+    message_results: str = '\n'.join(results_list)
+    for user in active_games[password]['users']:
+        send_message(
+            chat_id=user,
+            message=message_results,
+            keyboard=KEYBOARD_MAIN_MENU)
+        send_message(
+            chat_id=user,
+            message=message_achievements,
+            keyboard=KEYBOARD_MAIN_MENU)
+        for data in (users_passwords, users_states):
+            data.pop(user, None)
+    active_games.pop(password, None)
+    return
 
 
 def finish_round(
@@ -271,10 +327,10 @@ def finish_round(
         user_role: str = user_data['current_role']
         if user_role == BUKA:
             active_games[password]['users'][user][
-                'points_as_buka'] += incorrect_answers
+                'points_buka'] += incorrect_answers
         elif user_role == DREAMER:
             active_games[password]['users'][user][
-                    'points_as_dreamer'] += correct_answers
+                    'points_dreamer'] += correct_answers
             if incorrect_answers == 0:
                 active_games[password]['users'][user][
                     'guess_all_words'] = True
@@ -283,7 +339,7 @@ def finish_round(
                     'guess_none_words'] = True
         elif user_role == FAIRY:
             active_games[password]['users'][user][
-                'points_as_fairy'] += correct_answers
+                'points_fairy'] += correct_answers
         else:
             if correct_answers == incorrect_answers:
                 sandman_points: int = correct_answers + 2
@@ -292,7 +348,7 @@ def finish_round(
             else:
                 sandman_points: int = min(correct_answers, incorrect_answers)
             active_games[password]['users'][user][
-                'points_as_sandman'] += sandman_points
+                'points_sandman'] += sandman_points
         send_message(
             chat_id=user,
             message=message,
@@ -394,13 +450,13 @@ def represent_user_data(username: str) -> dict[str, any]:
         'current_role': None,
         'guess_all_words': False,
         'guess_none_words': False,
-        'user_name': username,
-        'penalties_total': 0,
-        'points_as_buka': 0,
-        'points_as_dreamer': 0,
-        'points_as_fairy': 0,
-        'points_as_sandman': 0,
-        'points_total': 0}
+        'points_buka': 0,
+        'points_dreamer': 0,
+        'points_fairy': 0,
+        'points_penalty': 0,
+        'points_sandman': 0,
+        'points_total': 0,
+        'user_name': username}
 
 
 def send_media_group(chat_id: int, media: list[InputMediaPhoto]) -> None:
