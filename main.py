@@ -13,7 +13,6 @@ import app_logger
 
 from app_data import (
     ALL_DATA, TELEGRAM_BOT_TOKEN,
-
     ACHIEVEMENTS, ACHIEVEMENTS_KEYS_GUESS, ACHIEVEMENTS_KEYS_OTHER,
 
     BUTTON_ADD_ME_PENALTY, BUTTON_BEGIN, BUTTON_CREATE, BUTTON_CORRECT_ANSWER,
@@ -25,15 +24,15 @@ from app_data import (
     KEYBOARD_EMPTY, KEYBOARD_IN_GAME, KEYBOARD_IN_LOBBY,
     KEYBOARD_IN_LOBBY_HOST, KEYBOARD_MAIN_MENU, KEYBOARD_START_NEXT_ROUND,
 
-    BUKA, DREAMER, FAIRY, CHARACTERS_CONFIG,
+    BUKA, DREAMER, FAIRY, CHARACTERS_CONFIG, USERS_MAX, USERS_MIN,
 
-    MESSAGE_CANT_CREATE_OR_JOIN, MESSAGE_CREATE_GAME,
+    MESSAGE_CANT_BEGIN, MESSAGE_CANT_CREATE_OR_JOIN, MESSAGE_CREATE_GAME,
     MESSAGE_CREATE_GAME_FAILED, MESSAGE_CREATE_GAME_PASS, MESSAGE_GAME_BEGIN,
     MESSAGE_GREET_1, MESSAGE_GREET_2, MESSAGE_HELP, MESSAGE_JOIN_GAME,
-    MESSAGE_JOIN_GAME_FAILED, MESSAGE_JOIN_GAME_PASS,
-    MESSAGE_IN_GAME_BUTTONS_INSTRUCTIONS, MESSAGE_LEAVE_GROUP_CHAT,
-    MESSAGE_NEXT_ROUND, MESSAGE_TEAMMATE, MESSAGE_PLAYER_MUST_SLEEP,
-    MESSAGE_PLAYER_ROLE, MESSAGE_ROUND_RESULTS,
+    MESSAGE_JOIN_GAME_FAILED, MESSAGE_JOIN_GAME_FAILED_TO_MUCH_USERS, 
+    MESSAGE_JOIN_GAME_PASS, MESSAGE_IN_GAME_BUTTONS_INSTRUCTIONS,
+    MESSAGE_LEAVE_GROUP_CHAT, MESSAGE_NEXT_ROUND, MESSAGE_TEAMMATE,
+    MESSAGE_PLAYER_MUST_SLEEP, MESSAGE_PLAYER_ROLE, MESSAGE_ROUND_RESULTS,
 
     USER_STATE_WANT_JOIN, USER_STATE_WANT_CREATE, USER_STATE_IN_GAME)
 
@@ -89,6 +88,11 @@ def command_begin(update, context) -> None:
         return
     game: dict[str, any] | None = active_games.get(password, None)
     if game is None or user_id != game['user_host'] or game['game_started']:
+        return
+    if len(game['users']) not in range(USERS_MIN, USERS_MAX + 1):
+        send_message(
+            chat_id=game['user_host'],
+            message=MESSAGE_CANT_BEGIN.format(users_count=len(game['users'])))
         return
     for user in game['users']:
         send_message(
@@ -394,7 +398,6 @@ def message_processing(update, context) -> None:
         return
     password: str = update.message.text
     if match(rf'\d{PASSWORD_LEN}', password):
-        update_teammates: bool = True
         user_name: str = represent_user(update)
         users_states[user_id] = USER_STATE_IN_GAME
         users_passwords[user_id] = password
@@ -416,19 +419,28 @@ def message_processing(update, context) -> None:
                 'round_number': 0,
                 'round_end_time': None}
             message: str = MESSAGE_CREATE_GAME_PASS
+            keyboard: list[list[str]] = KEYBOARD_IN_LOBBY_HOST
+            update_teammates: bool = True
+        elif len(active_games[password]['users']) >= USERS_MAX:
+            message: str = MESSAGE_JOIN_GAME_FAILED_TO_MUCH_USERS
+            keyboard: list[list[str]] = KEYBOARD_MAIN_MENU
+            update_teammates: bool = False
         else:
             active_games[password]['users'][
                 user_id] = represent_user_data(user_name)
             message: str = MESSAGE_JOIN_GAME_PASS
+            keyboard: list[list[str]] = KEYBOARD_IN_LOBBY
+            update_teammates: bool = True
     else:
         if user_state == USER_STATE_WANT_CREATE:
             message: str = MESSAGE_CREATE_GAME_FAILED
         else:
             message: str = MESSAGE_JOIN_GAME_FAILED
+        keyboard: list[list[str]] = KEYBOARD_MAIN_MENU
     send_message(
         chat_id=user_id,
         message=message,
-        ReplyKeyboardMarkup=KEYBOARD_IN_LOBBY)
+        ReplyKeyboardMarkup=keyboard)
     if update_teammates:
         update_teammate_message(active_games=active_games, password=password)
     return
